@@ -1,0 +1,3781 @@
+unit fdigitaplan;
+
+interface
+
+uses
+  Windows, Messages, SysUtils, Variants, Classes, Graphics, Controls, Forms,
+  Dialogs, StdCtrls, ComCtrls, Buttons, Grids, DBGrids, uplanjbm, inifiles,
+  datamodulegcpj_base_i, Func_Wintask_Obj, mgenlib, ExtCtrls, fatosDigitados, datamodule_honorarios,
+  fretornarnota, Menus, adodb, dateutils, fgcpj, OleCtrls, SHDocVw, mshtml;
+
+type
+  TfrmDigitaPlan = class(TForm)
+    Label1: TLabel;
+    DBGrid1: TDBGrid;
+    BitBtn2: TBitBtn;
+    re: TRichEdit;
+    BitBtn3: TBitBtn;
+    BitBtn4: TBitBtn;
+    BitBtn5: TBitBtn;
+    processando: TEdit;
+    Label2: TLabel;
+    numNota_: TEdit;
+    BitBtn6: TBitBtn;
+    BitBtn7: TBitBtn;
+    DBGrid2: TDBGrid;
+    DBGrid3: TDBGrid;
+    BitBtn1: TBitBtn;
+    Timer1: TTimer;
+    pmNotas: TPopupMenu;
+    Retornarnotafinalizada1: TMenuItem;
+    ConferirAtosdaNotaComoGCPJ1: TMenuItem;
+    pnlWeb: TPanel;
+    wb: TWebBrowser;
+    procedure FormCreate(Sender: TObject);
+    procedure BitBtn2Click(Sender: TObject);
+    procedure FormClose(Sender: TObject; var Action: TCloseAction);
+    procedure BitBtn3Click(Sender: TObject);
+    procedure BitBtn4Click(Sender: TObject);
+    procedure BitBtn5Click(Sender: TObject);
+    procedure BitBtn6Click(Sender: TObject);
+    procedure BitBtn7Click(Sender: TObject);
+    procedure BitBtn1Click(Sender: TObject);
+    procedure DBGrid2DblClick(Sender: TObject);
+    procedure Retornarnotafinalizada1Click(Sender: TObject);
+    procedure ConferirAtosdaNotaComoGCPJ1Click(Sender: TObject);
+    procedure wbDocumentComplete(Sender: TObject; const pDisp: IDispatch;
+      var URL: OleVariant);
+    procedure wbNewWindow2(Sender: TObject; var ppDisp: IDispatch;
+      var Cancel: WordBool);
+  private
+    FplanJbm: TPlanilhaJBM;
+    procedure SetplanJbm(const Value: TPlanilhaJBM);
+    { Private declarations }
+  public
+    { Public declarations }
+    property planJbm : TPlanilhaJBM read FplanJbm write SetplanJbm;
+    procedure IndexaBasesGCPJ;
+    function ObtemTipoAndamento(andamento: string; tipoProcesso: string; motivoBaixa: string) : string;
+    function ConfereAtosDaNota(numeroNota: string; wintask: TWintask) :integer;
+    function PosicionaNotaDigitando(notificar: boolean; nota: string; excluir: boolean;wintask: twintask) : integer;
+    procedure MyDeleteFile(nome: string);
+    procedure DigitaNotas(notaRetornar: string);
+    procedure NovaRotinaDigitacaoNotas(notaRetornar: string);
+    procedure SelecionaTodaLista;
+    function DigitaNotaNova(winTask: TWintask) : integer;
+
+    function GetInputField(fromForm: IHTMLFormElement;  const inputName: string;  const instance: integer=0): HTMLInputElement;
+    function GetFormByName(const documento: IHTMLDocument2; nomeForm: string) : IHTMLFormElement;
+    procedure EsperaPaginaProcessar;
+    function GetSelectField(fromForm: IHTMLFormElement;  const selectName: string;  const instance: integer=0): HTMLSelectElement;
+    function PosicionaNotaNova(wintask: TWintask) : integer;
+    function GetScriptField(fromForm: IHTMLFormElement;  const selectName: string;  const instance: integer=0): HTMLScriptElement;
+  end;
+
+const
+   TIME_SLEEP_ZERO = 500;
+   TIME_SLEEP_MIN = 800;
+   TIME_SLEEP_MED = 1000;
+
+var
+  frmDigitaPlan: TfrmDigitaPlan;
+  ie8 : boolean;
+  ff : boolean;
+  ultimaPagina, passagem : integer;
+  leftDown, leftUp, rightDown, rightUp : string;
+  winThread : TClickOkThread;
+  mainPage, pageGcpj : string;
+  segue : boolean;
+  wbpopUp : TfrmGcpj;
+
+implementation
+
+uses fcaddatainicial;
+
+
+{$R *.dfm}
+
+{ TfrmValidaPlan }
+
+procedure TfrmDigitaPlan.SetplanJbm(const Value: TPlanilhaJBM);
+begin
+  FplanJbm := Value;
+end;
+
+procedure TfrmDigitaPlan.FormCreate(Sender: TObject);
+var
+   ini : TiniFile;
+   configname : string;
+begin
+   planJbm := TPlanilhaJBM.Create;
+
+   DBGrid1.DataSource := planJbm.dsPlan;
+   DBGrid2.DataSource := planJbm.dsNotasPendentes;
+   DBGrid3.DataSource := planJbm.dsNotasDigitando;
+
+   planJbm.ObtemPlanilhasDigitar;
+   if planJbm.dtsPlanilha.RecordCount = 0 then
+      BitBtn4.Enabled := false;
+
+   GetParam('/wintaskini=', configname);
+   if configname = '' then
+      configname := 'wintask_config.ini';
+
+   ie8 := false;
+   ff := false;
+
+   if IsParam('/ff') then
+      ff := true
+   else
+   if IsParam('/ie8') then
+      ie8 := true
+   else
+   begin
+      ini := TIniFile.Create(ExtractFilePath(application.ExeName) + configname);
+      try
+         ie8 := ini.ReadBool('ie', 'ie8', false);
+         ff := ini.ReadBool('firefox', 'ff', false);
+      finally
+         ini.free;
+      end;
+   end;
+
+   ini := TIniFile.Create(ExtractFilePath(Application.ExeName) + configname);
+   try
+      leftDown := ini.ReadString('notepad', 'leftDown', '856');
+      leftup  := ini.ReadString('notepad', 'leftup', '490');
+      rightDown := ini.ReadString('notepad', 'rightDown', '787');
+      rightUp := ini.ReadString('notepad', 'rightUp', '297');
+   finally
+      ini.free;
+   end;
+
+   if ff then
+   begin
+      mainPage := 'PLUGIN-CONTAINER.EXE|Internet Explorer_Server|GCPJ - Mozilla Firefox|1';//'FIREFOX.EXE|MozillaWindowClass|GCPJ - Mozilla Firefox';
+      pageGcpj := 'GCPJ - Gestão e Controle de Processos Jurídico';//'GCPJ';// - Mozilla Firefox';
+   end
+   else
+   begin
+      mainPage := 'IEXPLORE.EXE|Internet Explorer_Server|GCPJ - Gestão e Controle de Processos Jurídicos - Windows Internet Explorer|1';//'IEXPLORE.EXE|Internet Explorer_Server|GCPJ - Windows Internet Explorer';
+      pageGcpj := 'GCPJ - Gestão e Controle de Processos Jurídico';//'GCPJ';
+   end;
+end;
+
+procedure TfrmDigitaPlan.BitBtn2Click(Sender: TObject);
+begin
+   try
+      winThread.pleaseClose:= true;
+   except
+   end;
+   close;
+end;
+
+procedure TfrmDigitaPlan.FormClose(Sender: TObject;
+  var Action: TCloseAction);
+begin
+   planJbm.Finalizar;
+   planJbm.Free;
+   action := CaFree;
+end;
+
+
+
+procedure TfrmDigitaPlan.IndexaBasesGCPJ;
+begin
+   processando.Text := 'Indexando as bases do GCPJ';
+   Application.ProcessMessages;
+
+   re.lines.Add('Criando índice na base de dados do GCPJ Base I. Aguarde.....');
+   Application.ProcessMessages;
+   planJbm.CriaIndiceBaseI;
+
+   re.lines.Add('Criando índice na base de dados do GCPJ Base II. Aguarde.....');
+   Application.ProcessMessages;
+   planJbm.CriaIndiceBaseII;
+
+   re.lines.Add('Criando índice na base de dados do GCPJ Base III. Aguarde.....');
+   Application.ProcessMessages;
+   planJbm.CriaIndiceBaseIII;
+
+   re.lines.Add('Criando índice na base de dados do GCPJ Base IV. Aguarde.....');
+   Application.ProcessMessages;
+   planJbm.CriaIndiceBaseIV;
+
+   re.lines.Add('Criando índice na base de dados do GCPJ Base Compartilhada. Aguarde.....');
+   Application.ProcessMessages;
+   planJbm.CriaIndiceBaseCompartilhada;
+
+   re.lines.Add('Criando índice na base de dados do GCPJ Base Migrados. Aguarde.....');
+   Application.ProcessMessages;
+   planJbm.CriaIndiceBaseMigrados;
+end;
+
+
+procedure TfrmDigitaPlan.BitBtn3Click(Sender: TObject);
+var
+   arquivo : TstringList;
+   linha : string;
+   ini : TIniFile;
+   contador : integer;
+begin
+   ini := TiniFile.Create(ExtractFilePath(Application.ExeName) + 'CONFIG.INI');
+   try
+      if FormatDateTime('dd/mm/yyyy', date) <> ini.ReadString('gcpj', 'reindexacao','') then
+      begin
+         IndexaBasesGCPJ;
+         ini.WriteString('gcpj', 'reindexacao',FormatDateTime('dd/mm/yyyy', date));
+      end;
+   finally
+      ini.Free;
+   end;
+
+   planJbm.idEscritorio := planJbm.dtsPlanilha.FieldByName('idescritorio').AsInteger;
+   planJbm.idplanilha := planJbm.dtsPlanilha.FieldByName('idplanilha').AsInteger;
+   planJbm.sequencia :=  planJbm.dtsPlanilha.FieldByName('sequencia').AsInteger;
+   planJbm.anomesreferencia := planJbm.dtsPlanilha.FieldByName('anomesreferencia').AsString;
+   re.lines.Clear;
+
+   planJbm.ObtemProcessosCruzarGcpj(7);
+
+   arquivo := TStringList.Create;
+   try
+      arquivo.add('Ano/Mês;Escritório;Cód. Empresa Grupo;Nome Empresa Grupo;Nota;GCPJ;Parte Contrária;Tipo Ato;Tipo Ação;Sub Tipo Ação;Data Baixa;Motivo Baixa;Data do Ato;Valor do Pedido;Valor Pagar;'+
+                  'Cod.Reclamada1;Nome Reclamada1;Cod.Reclamada2;Nome Reclamada2;Cod.Reclamada3;Nome Reclamada3;Cod.Reclamada4;Nome Reclamada4');
+      while not planJbm.dtsAtos.Eof do
+      begin
+         planJbm.CarregaCamposDaTabela;
+         re.Lines.add('Exportando: ' + planJbm.dtsAtos.FieldByName('gcpj').AsString);
+         Application.ProcessMessages;
+
+         linha := planJbm.anomesreferencia + ';' + planJbm.dtsPlanilha.FieldByName('nomeescritorio').AsString + ';' +
+                  planJbm.dtsAtos.FieldByName('empresaligadaagrupar').AsString + ';' + planJbm.dtsAtos.FieldByName('nomeempresaligada').AsString + ';' +
+                  planJbm.dtsAtos.FieldByName('numeronota').AsString + ';' + planJbm.dtsAtos.FieldByName('gcpj').AsString + ';' +
+                  planJbm.dtsAtos.FieldByName('partecontraria').AsString + ';' + planJbm.dtsAtos.FieldByName('tipoandamento').AsString + ';' +
+                  planJbm.dtsAtos.FieldByName('tipoacao').AsString + ';' + planJbm.dtsAtos.FieldByName('subtipoacao').AsString + ';' +
+                  planJbm.dtsAtos.FieldByName('databaixa').AsString + ';' + planJbm.dtsAtos.FieldByName('motivobaixa').AsString + ';' +
+                  planJbm.dtsAtos.FieldByName('datadoato').AsString + ';' + FormatFloat('#,##0.00', planJbm.dtsAtos.FieldByName('valorcorrigido').AsFloat) + ';' +
+                  FormatFloat('#,##0.00', planJbm.dtsAtos.FieldByName('valordopedido').AsFloat);
+
+         planJbm.ObtemReclamadasDoProcesso;
+         if planJbm.dtsReclamadas.Eof then
+            linha := linha + ';;;;;;;';
+
+         contador := 0;
+         while not planJbm.dtsReclamadas.Eof do
+         begin
+            Inc(contador);
+            if contador > 4 then
+               break;
+            linha := linha + ';' + planJbm.dtsReclamadas.FieldByName('codigoreclamada').AsString + ';' + planJbm.dtsReclamadas.FieldByName('nomereclamada').AsString;
+            planjbm.dtsReclamadas.Next;
+         end;
+         arquivo.Add(linha);
+         planJbm.dtsAtos.Next;
+      end;
+      arquivo.SaveToFile(ExtractFilePath(Application.ExeName) + 'NOTAS.TXT');
+   finally
+      arquivo.free;
+   end;
+end;
+
+procedure TfrmDigitaPlan.BitBtn4Click(Sender: TObject);
+begin
+   if IsParam('/new') then
+      NovaRotinaDigitacaoNotas('')
+   else
+      DigitaNotas('');
+end;
+
+procedure TfrmDigitaPlan.DigitaNotas(notaRetornar: string);
+var
+   wintask :  TWintask;
+   ultdocumento : string;
+   fName : string;
+   valor, valDigitar : string;
+   digitando : boolean;
+   i, estagio, index, p, k : integer;
+   arquivo : TStringList;
+   destinatarioOk : boolean;
+//   nota : string;
+   passagem : integer;
+   totaldigitado, novototaldigitado, antigoTotalDigitado: double;
+   dataDigitar : string;
+   popup : string;
+   numeronota : string;
+   bMark : TBookmarkList;
+   fhandle :integer;
+   ret : integer;
+   andamentoDigitar : string;
+
+   label
+      proximo;
+
+   function TemDestinatario : boolean;
+   var
+      i,p : integer;
+      arquivo : TStringlist;
+      codigo : string;
+   begin
+      result := false;
+      arquivo := TStringList.Create;
+      try
+         arquivo.LoadFromFile(fname);
+
+         for i := 0 to arquivo.count - 1 do
+         begin
+            p :=  pos('despesaHonorariosProcessoVO.composicaoDespHonorariosVO.dependenciaBradescoOnLineVO.cdDestinatario" maxlength="5" size="5" value="', arquivo.strings[i]);
+            if p = 0 then
+               continue;
+            codigo := Copy(arquivo.strings[i], p+129, length(arquivo.strings[i]));
+            p := Pos('" onkeydown="', codigo);
+            if p = 0 then
+               exit;
+
+            codigo := Trim(Copy(codigo, 1, p-1));
+            if codigo <> '' then
+               result := true;
+            exit;
+         end;
+      finally
+         arquivo.free;
+      end;
+   end;
+
+   function ObtemDependenciaDigitar:string;
+   var
+      i,p : integer;
+      arquivo : TStringlist;
+      estagio : integer;
+      codigo, nome : string;
+      valstr : string;
+      dependencia : string;
+      primeira : boolean;
+      sequencia : integer;
+   begin
+      result := '';
+      codigo := '';
+      nome:= '';
+      planJbm.ObtemReclamadasDoProcesso;
+      sequencia := 1;
+
+      while Not planJbm.dtsReclamadas.Eof do
+      begin
+         if planJbm.dtsReclamadas.FieldByName('sequenciagcpj').AsInteger = sequencia then //guarda a primeira por seguranca
+         begin
+            if planJbm.dtsReclamadas.FieldByName('codigoreclamada').AsInteger <> 0 then
+            begin
+               codigo := planJbm.dtsReclamadas.FieldByName('codigoreclamada').AsString;
+               nome := planJbm.dtsReclamadas.FieldByName('nomereclamada').AsString;
+            end
+            else
+            begin
+               Inc(sequencia);
+               planJbm.dtsReclamadas.Next;
+               continue;
+            end;
+         end;
+
+         //é bradesco?
+         if planJbm.dtsAtos.FieldByName('empresaligadaagrupar').AsInteger = 237 then //procura uma agencia
+         begin
+            if planJbm.dtsReclamadas.FieldByName('codempresa').AsInteger = planJbm.dtsAtos.FieldByName('empresaligadaagrupar').AsInteger then
+            begin
+               if planJbm.dtsReclamadas.FieldByName('tiporeclamada').AsString = 'A' then //agencia
+               begin
+                  codigo := planJbm.dtsReclamadas.FieldByName('codigoreclamada').AsString;
+                  nome := planJbm.dtsReclamadas.FieldByName('nomereclamada').AsString;
+                  break;
+               end;
+            end;
+         end
+         else
+         begin
+            if (planJbm.dtsReclamadas.FieldByName('codigoreclamada').AsInteger = 4001) and (planJbm.dtsAtos.FieldByName('empresaligadaagrupar').AsInteger = 5172) then
+            begin
+               codigo := planJbm.dtsReclamadas.FieldByName('codigoreclamada').AsString;
+               nome := planJbm.dtsReclamadas.FieldByName('nomereclamada').AsString;
+               break;
+            end
+            else
+            if (planJbm.dtsReclamadas.FieldByName('codigoreclamada').AsInteger = planJbm.dtsAtos.FieldByName('empresaligadaagrupar').AsInteger) or
+               (planJbm.dtsReclamadas.FieldByName('codigoreclamada').AsInteger = planJbm.dtsAtos.FieldByName('codempresaligada').AsInteger) then
+            begin
+               if planJbm.dtsReclamadas.FieldByName('tiporeclamada').AsString <> 'A' then //não pode ser agencia
+               begin
+                  codigo := planJbm.dtsReclamadas.FieldByName('codigoreclamada').AsString;
+                  nome := planJbm.dtsReclamadas.FieldByName('nomereclamada').AsString;
+                  break;
+               end;
+            end;
+         end;
+         planJbm.dtsReclamadas.Next;
+      end;
+
+      if (codigo = '0') or (codigo = '') then
+         primeira := true
+      else
+         primeira := false;
+
+      arquivo := TStringList.Create;
+      try
+         arquivo.LoadFromFile(fname);
+
+         while true do
+         begin
+            estagio := 0;
+            dependencia := '';
+
+            for i := 0 to arquivo.count - 1 do
+            begin
+               case estagio of
+                  0 : begin
+                     if pos('<select name="selDependencia"', arquivo.strings[i]) = 0 then
+                        continue;
+                     Inc(estagio);
+                  end;
+                  1 : begin
+                     p := Pos('<option value="', arquivo.strings[i]);
+                     if p = 0 then
+                        break;;
+
+                     valstr := trim(Copy(arquivo.strings[i], p+15, length(arquivo.strings[i])));
+                     p := Pos('">', valstr);
+                     if p = 0 then
+                        exit;
+
+                     if Not primeira then
+                     begin
+                        if RemoveNaoNumericos(Trim(copy(valstr, 1, p-1))) <> codigo then
+                           continue;
+                     end;
+
+                     valStr := Trim(Copy(valStr, p+2, length(valstr)));
+                     p := pos('</option>', valStr);
+                     if p = 0 then
+                     begin
+                        result := '';
+                        exit;
+                     end;
+
+                     valStr := Copy(valStr, 1, p-1);
+                     if valStr = '' then
+                        ShowMessage('Erro valor');
+
+                     p := Pos('&#39;', valStr);
+                     if p <> 0 then
+                        valstr := copy(valstr, 1, p-1) + '''' + copy(valstr, p+5, length(valstr));
+
+                     Result := valstr;
+                     exit;
+                  end;
+               end;
+            end;
+            //nao achou
+            if primeira then
+            begin
+               Result := nome;
+               exit;
+            end;
+            primeira := true;
+         end;
+      finally
+         arquivo.free;
+      end;
+   end;
+
+   function ObtemTotalDigitado:double;
+   var
+      i, p, passagem : integer;
+   begin
+      result := 0;
+      passagem := 1;
+
+      Sleep(800);
+
+      while passagem <= 3 do
+      begin
+         wintask.Click_Mouse(mainPage,591,234);
+         Sleep(500);
+
+         fName := wintask.GetPagina_CopyText(mainPage,
+                                                'Tipo de Prestador: ');
+         if fName = '' then
+         begin
+            Inc(passagem);
+            Sleep(800);
+            continue;
+         end;
+
+         //esta na pagina principal
+         arquivo := TStringList.Create;
+         try
+            arquivo.LoadFromFile(fname);
+            for i := 0 to arquivo.count - 1 do
+            begin
+               p := Pos('Total: ', arquivo.strings[i]);
+               if p = 0 then
+                  continue;
+
+               valor := Trim(Copy(arquivo.strings[i], p+7, length(arquivo.Strings[i])));
+               RemoveEsteCaracter('.', valor);
+               RemoveEsteCaracter(' ', valor);
+
+               if valor = '' then
+                  result := 0
+               else
+                  result := StrToFloat(valor);
+               exit;
+            end;
+         finally
+            arquivo.free;
+            MyDeleteFile(fName);
+         end;
+      end;
+   end;
+
+
+   function PosicionaNotaNova:integer;
+   begin
+      result := -1;
+
+
+      wintask.Click_Mouse(mainPage, 591,234);
+
+
+      //localizar a tela da nota
+      if wintask.EstaNaPagina_CopyText(mainPage, 'Tipo de Prestador: ') then
+      begin
+         wintask.ClickHTMLElement(pageGcpj, 'INPUT SUBMIT[VALUE= ''voltar'']');
+         sleep(TIME_SLEEP_MIN);
+      end;
+
+      if Not wintask.EstaNaPagina_CopyText(mainPage, 'Honorários em Cadastramento') then
+         exit;
+
+      wintask.ClickHTMLElement(pageGcpj, 'INPUT SUBMIT[VALUE= ''incluir'']');
+      Sleep(TIME_SLEEP_MED);
+
+      wintask.Click_Mouse(mainPage, 591,234);
+
+      while wintask.EstaNaPagina_CopyText(mainPage, 'Honorários em Cadastramento') do
+      begin
+         wintask.Click_Mouse(mainPage, 591,234);
+         Application.ProcessMessages;
+         Sleep(500);
+      end;
+
+
+      wintask.SelectHTMLItem(pageGcpj, 'SELECT[NAME= ''cdTipoDocumentoPesso'']''', 'CNPJ');
+      Sleep(TIME_SLEEP_MED);
+
+
+//      wintask.Click_Mouse(mainPage,297,184);
+      wintask.Click_Mouse(mainPage,293,89);
+      Sleep(TIME_SLEEP_ZERO);
+
+      valor := planJbm.cnpjEscritorio;
+      valDigitar := '<Num 0>';
+      while Length(valor) > 0 do
+      begin
+         valDigitar := valDigitar + '<Num ' + Copy(valor, 1, 1) + '>';
+         valor := Copy(valor, 2, length(valor));
+      end;
+
+      wintask.SendKey(mainPage,valDigitar);
+      Sleep(TIME_SLEEP_ZERO);
+
+      wintask.ClickHTMLElement(pageGcpj, 'INPUT BUTTON[NAME= ''btoLupa'']');
+      Sleep(1800);
+
+      if ie8 then
+         popup := 'IEXPLORE.EXE|Internet Explorer_Server|Popup - Windows Internet Explorer|1'
+      else
+         popup:= 'IEXPLORE.EXE|Internet Explorer_Server|Popup - Windows Internet Explorer|1';
+
+      if wintask.Verifica_Janela_PopUp(popup, valor) = 1 then
+      begin
+         if planJbm.nomedigitar = '' then
+            wintask.ClickHTMLElement('Popup', 'A[INNERTEXT= ''' + copy(planJbm.nomeescritorio, 1, 20) + ''']')
+         else
+            wintask.ClickHTMLElement('Popup', 'A[INNERTEXT= ''' + planJbm.nomedigitar + ''']');
+         Sleep(TIME_SLEEP_MIN);
+      end
+      else
+      begin
+        popUp := 'IEXPLORE.EXE|Static|O campo CNPJ é obrigatório';
+
+        if wintask.Verifica_Janela_PopUp(popup, valor) = 1 then
+        begin
+           if wintask.ie8 then
+              wintask.Click_Button('IEXPLORE.EXE|#32770|Mensagem da página da web','OK')
+           else
+              wintask.Click_Button('IEXPLORE.EXE|#32770|Windows Internet Explorer', 'OK');
+
+           wintask.ClickHTMLElement(pageGcpj, 'INPUT SUBMIT[VALUE= ''voltar'']');
+           Sleep(TIME_SLEEP_MIN);
+           exit;
+        end;
+      end;
+
+      wintask.SelectHTMLItem(pageGcpj, 'SELECT[NAME= ''despesaHonorariosPro'']', 'NOTA FISCAL');
+      Sleep(TIME_SLEEP_ZERO);
+
+//      wintask.Click_Mouse(mainPage, 577,307);
+      wintask.Click_Mouse(mainPage, 552,217);
+      Sleep(TIME_SLEEP_ZERO);
+
+      valor := planJbm.dtsAtos.FieldByName('numeronota').AsString;
+      valDigitar := '';
+      while Length(valor) > 0 do
+      begin
+         valDigitar := valDigitar + '<Num ' + Copy(valor, 1, 1) + '>';
+         valor := Copy(valor, 2, length(valor));
+      end;
+      wintask.SendKey(mainPage,valDigitar);
+      Sleep(TIME_SLEEP_ZERO);
+
+      wintask.SendKey(mainPage,'<Tab>A<Tab>');
+      Sleep(TIME_SLEEP_ZERO);
+
+      valor := FormatDateTime('ddmmyyyy', date);
+      valDigitar := '';
+      while Length(valor) > 0 do
+      begin
+         valDigitar := valDigitar + '<Num ' + Copy(valor, 1, 1) + '>';
+         valor := Copy(valor, 2, length(valor));
+      end;
+      wintask.SendKey(mainPage,valDigitar);
+      Sleep(TIME_SLEEP_ZERO);
+
+      wintask.Click_Mouse(mainPage,546,241);
+//      wintask.Click_Mouse(mainPage,589,338);
+      Sleep(TIME_SLEEP_ZERO);
+
+      valor := RemoveNaoNumericos(FormatFloat('0.00', planJbm.valorTotalNota));
+      valDigitar := '';
+      while Length(valor) > 0 do
+      begin
+         valDigitar := valDigitar + '<Num ' + Copy(valor, 1, 1) + '>';
+         valor := Copy(valor, 2, length(valor));
+      end;
+
+      wintask.SendKey(mainPage,valDigitar);
+      Sleep(TIME_SLEEP_ZERO);
+
+      wintask.WriteHTML(pageGcpj, 'INPUT TEXT[NAME= ''despesaHonorariosProcessoVO.empresaBradescoVO.c'']', '237');
+      Sleep(TIME_SLEEP_ZERO);
+
+      if planJbm.dtsAtos.FieldByName('empresaligadaagrupar').AsInteger <> 237 then
+         wintask.WriteHTML(pageGcpj, 'INPUT TEXT[NAME= ''despesaHonorariosProcessoVO.dependenciaBradesco'']', planJbm.dtsAtos.FieldByName('empresaligadaagrupar').AsString);
+      Sleep(TIME_SLEEP_ZERO);
+      result := 1;
+   end;
+
+   function VerificaTela(comThread: boolean):integer;
+   begin
+      result := -1;
+
+      if comThread then
+      begin
+//         winThread:= TClickOkThread.Create;
+//         winThread.Resume;
+      end;
+
+      try
+        popup := 'IEXPLORE.EXE|Static|CODIGO PRESTADOR INVALIDO';
+
+        if wintask.Verifica_Janela_PopUp(popup, valor) = 1 then
+        begin
+           if ie8 then
+              wintask.Click_Button('IEXPLORE.EXE|#32770|Mensagem da página da web','OK')
+           else
+              wintask.Click_Button('IEXPLORE.EXE|#32770|Windows Internet Explorer', 'OK');
+
+            Sleep(TIME_SLEEP_ZERO);
+
+            result :=1;
+            exit;
+         end;
+
+         Sleep(200);
+        popup := 'TASKEXEC.EXE|Static|Error at line';
+
+        if wintask.Verifica_Janela_PopUp(popup, valor) = 1 then
+        begin
+           if ie8 then
+              wintask.Click_Button('IEXPLORE.EXE|#32770|Mensagem da página da web','OK')
+           else
+              wintask.Click_Button('IEXPLORE.EXE|#32770|Windows Internet Explorer', 'OK');
+
+            Sleep(TIME_SLEEP_ZERO);
+
+            result :=1;
+            exit;
+         end;
+
+         Sleep(200);
+         popup := 'IEXPLORE.EXE|Static|CODIGO DO TIPO DOCUMENTO HONORARIOS INVALIDO';
+
+         if wintask.Verifica_Janela_PopUp(popup, valor) = 1 then
+         begin
+            if ie8 then
+               wintask.Click_Button('IEXPLORE.EXE|#32770|Mensagem da página da web','OK')
+            else
+               wintask.Click_Button('IEXPLORE.EXE|#32770|Windows Internet Explorer', 'OK');
+            Sleep(TIME_SLEEP_ZERO);
+
+            result :=1;
+            exit;
+         end;
+
+         Sleep(200);
+         popup := 'IEXPLORE.EXE|Static|Pressione a lupa para realizar a pesquisa';
+         if wintask.Verifica_Janela_PopUp(popup, valor) = 1 then
+         begin
+            if ie8 then
+               wintask.Click_Button('IEXPLORE.EXE|#32770|Mensagem da página da web','OK')
+            else
+               wintask.Click_Button('IEXPLORE.EXE|#32770|Windows Internet Explorer', 'OK');
+            Sleep(TIME_SLEEP_ZERO);
+
+            result :=1;
+            exit;
+         end;
+
+         Sleep(200);
+         popup := 'IEXPLORE.EXE|Static|DATA DO ATO INVALIDO';
+
+         if wintask.Verifica_Janela_PopUp(popup, valor) = 1 then
+         begin
+            if ie8 then
+               wintask.Click_Button('IEXPLORE.EXE|#32770|Mensagem da página da web','OK')
+            else
+               wintask.Click_Button('IEXPLORE.EXE|#32770|Windows Internet Explorer', 'OK');
+            Sleep(TIME_SLEEP_ZERO);
+
+            result :=1;
+            exit;
+         end;
+
+         Sleep(200);
+         if ie8 then
+            popUp := 'IEXPLORE.EXE|Static|O campo Valor do Ato é obrigatório'
+         else
+            popUp := 'IEXPLORE.EXE|Static|O campo Valor do Ato é obrigatório';
+
+         if wintask.Verifica_Janela_PopUp(popup, valor) = 1 then
+         begin
+            if ie8 then
+               wintask.Click_Button('IEXPLORE.EXE|#32770|Mensagem da página da web','OK')
+            else
+               wintask.Click_Button('IEXPLORE.EXE|#32770|Windows Internet Explorer', 'OK');
+
+            result := 0;
+            exit;
+         end;
+
+         Sleep(200);
+         if ie8 then
+            popup := 'IEXPLORE.EXE|Static|O campo Data do Ato é obrigatório'
+         else
+            popup := 'IEXPLORE.EXE|Static|O campo Data do Ato é obrigatório';
+
+         if wintask.Verifica_Janela_PopUp(popup, valor, false) = 1 then
+         begin
+            if ie8 then
+               wintask.Click_Button('IEXPLORE.EXE|#32770|Mensagem da página da web','OK')
+            else
+               wintask.Click_Button('IEXPLORE.EXE|#32770|Windows Internet Explorer', 'OK');
+                             Sleep(TIME_SLEEP_ZERO);
+            result := 0;
+            exit;
+         end;
+
+         Sleep(200);
+         popUp := 'IEXPLORE.EXE|Static|O campo Data do Documento é obrigatório';
+         if wintask.Verifica_Janela_PopUp(popup, valor) = 1 then
+         begin
+            if wintask.ie8 then
+               wintask.Click_Button('IEXPLORE.EXE|#32770|Mensagem da página da web','OK')
+            else
+               wintask.Click_Button('IEXPLORE.EXE|#32770|Windows Internet Explorer', 'OK');
+            result := 1;
+            exit;
+         end;
+
+         Sleep(200);
+         popUp := 'IEXPLORE.EXE|Static|O campo Nº do Processo Bradesco é obrigatório';
+         if wintask.Verifica_Janela_PopUp(popup, valor) = 1 then
+         begin
+            if wintask.ie8 then
+               wintask.Click_Button('IEXPLORE.EXE|#32770|Mensagem da página da web','OK')
+            else
+               wintask.Click_Button('IEXPLORE.EXE|#32770|Windows Internet Explorer', 'OK');
+            result := 1;
+            exit;
+         end;
+
+         Sleep(200);
+         if ie8 then
+            popUp := 'IEXPLORE.EXE|Static|O campo Código do Destinatário é obrigatório.'
+         else
+            popUp := 'IEXPLORE.EXE|Static|O campo Código do Destinatário é obrigatório.';
+
+         if wintask.Verifica_Janela_PopUp(popup, valor) = 1 then
+         begin
+            if ie8 then
+               wintask.Click_Button('IEXPLORE.EXE|#32770|Mensagem da página da web','OK')
+            else
+               wintask.Click_Button('IEXPLORE.EXE|#32770|Windows Internet Explorer', 'OK');
+
+            result := 0;
+            exit;
+         end;
+
+         Sleep(200);
+         if ie8 then
+            popup := 'IEXPLORE.EXE|Static|O campo Dependência é obrigatório'
+         else
+            popup := 'IEXPLORE.EXE|Static|O campo Dependência é obrigatório';
+
+         if wintask.Verifica_Janela_PopUp(popup, valor) = 1 then
+         begin
+            if ie8 then
+               wintask.Click_Button('IEXPLORE.EXE|#32770|Mensagem da página da web','OK')
+            else
+               wintask.Click_Button('IEXPLORE.EXE|#32770|Windows Internet Explorer', 'OK');
+
+            result := 0;
+            exit;
+         end;
+
+         Sleep(200);
+         if ie8 then
+            popup := 'IEXPLORE.EXE|Static|O campo Ato é obrigatório'
+         else
+            popup := 'IEXPLORE.EXE|Static|O campo Ato é obrigatório';
+
+         if wintask.Verifica_Janela_PopUp(popup, valor) = 1 then
+         begin
+            if ie8 then
+               wintask.Click_Button('IEXPLORE.EXE|#32770|Mensagem da página da web','OK')
+            else
+               wintask.Click_Button('IEXPLORE.EXE|#32770|Windows Internet Explorer', 'OK');
+
+            result := 0;
+            exit;
+         end;
+
+         Sleep(200);
+         if ie8 then
+            popup := 'IEXPLORE.EXE|Static|Esta dependência foi encerrada, deseja alterá-la para'
+         else
+            popup := 'IEXPLORE.EXE|Static|Esta dependência foi encerrada, deseja alterá-la para';
+
+         if wintask.Verifica_Janela_PopUp(popup, valor) = 1 then
+         begin
+            wintask.Click_Button('IEXPLORE.EXE|#32770|Windows Internet Explorer', 'OK');
+            result := 0;
+            exit;
+         end;
+
+
+         Sleep(200);
+         popup := 'IEXPLORE.EXE|Static|VALOR DO DOCUMENTO DEVE SER IGUAL A SOMATORIA DOS ATOS';
+         if wintask.Verifica_Janela_PopUp(popup, valor) = 1 then
+         begin
+            wintask.Click_Button('IEXPLORE.EXE|#32770|Windows Internet Explorer','OK');
+            result := 0;
+            exit;
+         end;
+
+         Sleep(200);
+         popup := 'IEXPLORE.EXE|Internet Explorer_Server|ERRO! - Windows Internet Explorer';
+
+         if wintask.Verifica_Janela_PopUp(popup, valor) = 1 then
+         begin
+            result := -2;
+            exit;
+         end;
+
+         result := 1;
+         exit;
+      finally
+         try
+            if comThread then
+               winThread.pleaseClose:=true;
+         except
+         end;
+      end;
+
+
+//                     planJbm.NotificaErro('Valores digitados não conferem');
+//                     ShowMessage('Valores digitados não conferem');
+//                     exit;
+//                  end;
+   end;
+
+   procedure ExcluiDoGcpj(contador:integer);
+   begin
+      //exclui o ato do GCPJ
+      wintask.ClickHTMLElement(pageGcpj, 'INPUT RADIO[NAME= ''composicoesSelecs'',INDEX=''' + IntToStr(contador) + ''']');
+      Sleep(TIME_SLEEP_ZERO);
+
+      wintask.ClickHTMLElement(pageGcpj, 'INPUT SUBMIT[VALUE= ''excluir'']');
+      Sleep(TIME_SLEEP_MED);
+
+      wintask.ClickHTMLElement(pageGcpj, 'INPUT SUBMIT[VALUE= ''voltar'']');
+      sleep(TIME_SLEEP_MED);
+   end;
+
+
+begin
+   re.lines.Clear;
+
+   if FormatDateTime('hh:nn', Now) > '22:00' then
+      exit;
+
+   planJbm.idEscritorio := planJbm.dtsPlanilha.FieldByName('idescritorio').AsInteger;
+   planJbm.idplanilha := planJbm.dtsPlanilha.FieldByName('idplanilha').AsInteger;
+   planJbm.sequencia :=  planJbm.dtsPlanilha.FieldByName('sequencia').AsInteger;
+   planJbm.anomesreferencia := planJbm.dtsPlanilha.FieldByName('anomesreferencia').AsString;
+   planJbm.cnpjescritorio := planJbm.dtsPlanilha.FieldByName('cnpjescritorio').AsString;
+   planJbm.nomeescritorio := planJbm.dtsPlanilha.FieldByName('nomeescritorio').AsString;
+   planJbm.nomedigitar := planJbm.dtsPlanilha.FieldByName('nomedigitar').AsString;
+
+   dataDigitar := planJbm.ObtemDataDigitar;
+   if dataDigitar = '' then
+   begin
+      if MessageDlg('Não encontrada a data inicial para o ano/mês de referência. Deseja cadastrar?', mtConfirmation, mbYesNoCancel, 0) <> mrYes then
+      begin
+         planJbm.NotificaErro('Sistema não pode digitar para o mês ' + planJbm.anomesreferencia + ' até ser cadastrada a data inicial');
+         ShowMessage('Sistema não pode digitar para o mês ' + planJbm.anomesreferencia + ' até ser cadastrada a data inicial');
+         exit;
+      end;
+
+      frmCadDataInicial := TfrmCadDataInicial.Create(nil);
+      try
+         if frmCadDataInicial.ShowModal <> mrOk then
+            exit;
+
+         planJbm.CadastraDataInicial(frmCadDataInicial.dataInicial.date);
+      finally
+         frmCadDataInicial.Free;
+      end;
+      dataDigitar := planJbm.ObtemDataDigitar;
+   end;
+
+   dbGrid2.DataSource.DataSet.DisableControls;
+
+   try
+      if dbGrid2.SelectedRows.Count = 0 then //nehujm marcado. Marca todos
+      begin
+         //ainda tem registro?
+         if DBGrid2.DataSource.DataSet.RecordCount = 0 then
+         begin
+            planJbm.MarcaPlanilhaFinalizada;
+            planjbm.dtsPlanilha.Close;
+            planjbm.dtsPlanilha.Open;
+            exit;
+         end;
+         SelecionaTodaLista;
+      end;
+
+      bMark := dbGrid2.SelectedRows;
+
+      for k := 0 to bMark.Count - 1 do
+      begin
+         wintask := TWintask.Create('c:\Arquivos de programas\WinTask\bin\TaskExec.exe',
+                                    'Q:\Publico\Backup_sistemas\Compartilhado\Honorarios_Programa\presenta\rob\',
+                                    '');
+
+         try
+            wintask.ie8 := ie8;
+            wintask.ff := ff;
+
+            wintask.FecharTodos('TaskExec.exe');
+            wintask.FecharTodos('TaskLock.exe');
+            wintask.FecharTodos('Tasksync.exe');
+
+            if IsParam('/testar') then
+            begin
+               wintask.EstaNaPagina_NotepadCodePage(mainPage,
+                                                    //'813', '289',         ]
+                                                    //'780', '459',
+                                                    rightDown, rightUp,
+                                                    leftDown, leftUp,
+                                                    'NOTEPAD.EXE|Notepad|finHonorariosNovoAction',
+                                                    'Documento do Prestador: ',
+                                                    false);
+               exit;
+            end;
+
+
+            if FileExists(ExtractFilePath(Application.ExeName) + 'ENCERRAR.TXT') then
+            begin
+               RenameFile(ExtractFilePath(Application.ExeName) + 'ENCERRAR.TXT', ExtractFilePath(Application.ExeName) + 'ENCERRAR.OK');
+               exit;
+            end;
+
+            dbGrid2.DataSource.DataSet.BookMark := bMark.items[k];
+
+            digitando := false;
+            ultdocumento := '';
+            totaldigitado := 0;
+            novototaldigitado := 0;
+            antigototaldigitado := 0;
+
+
+            if (notaRetornar <> '') and (DBGrid2.DataSource.DataSet.FieldByName('numeronota').AsString <> notaRetornar) then
+               continue;
+
+            planJbm.empresaLigada := DBGrid2.DataSource.DataSet.FieldByName('empresa_ligada_agrupar').AsInteger;
+            planJbm.numerodanota :=  DBGrid2.DataSource.DataSet.FieldByName('numeronota').AsInteger;
+
+            ret := IsFileLocked(planJbm.ObtemDirLck + '\' + IntToStr(planJbm.numerodanota) + '.lck', fhandle);
+
+            if ret <= 0 then
+               continue;
+
+
+            if wintask.ie8 then
+            begin
+               ret := VerificaTela(false);
+               if ret <> 1 then
+               begin
+
+                  ReleaseFile(planJbm.ObtemDirLck + '\' +IntToStr(planJbm.numerodanota) + '.lck', fhandle);
+                  try
+                     winThread.pleaseClose:= true;
+                  except
+                  end;
+
+                  if ret = -2 then
+                  begin
+                     ShowMessage('Erro inesperado no GCPJ');
+                     exit;
+                  end;
+
+                  planJbm.dtsNotasPendentes.Close;
+                  planJbm.dtsNotasPendentes.Open;;
+
+                  //DBGrid2.SelectedRows.Clear;
+                  DigitaNotas(DBGrid2.DataSource.DataSet.FieldByName('numeronota').AsString);
+                  exit;
+               end;
+            end;
+
+            try
+               ret := planJbm.ObtemProcessosDigitar(DBGrid2.DataSource.DataSet.FieldByName('numeronota').AsString);
+
+               if ret = -1 then
+                  exit;
+
+               if ret = 0 then
+               begin
+                  //finaliza a nota no GCPJ
+                  if PosicionaNotaDigitando(false,DBGrid2.DataSource.DataSet.FieldByName('numeronota').AsString, false, wintask)>= 0 then
+                  begin
+                     wintask.ClickHTMLElement(pageGcpj, 'INPUT SUBMIT[VALUE= ''finalizar nota'']');
+                     Sleep(TIME_SLEEP_MED);
+
+                     if ie8 then
+                        popup := 'IEXPLORE.EXE|Static|Operação realizada com sucesso'
+                     else
+                        popup :='IEXPLORE.EXE|Static|Operação realizada com sucesso';
+                     if wintask.Verifica_Janela_PopUp(popup, valor) = 1 then
+                     begin
+                        wintask.Click_Button('IEXPLORE.EXE|#32770|Windows Internet Explorer','OK');
+                        Sleep(TIME_SLEEP_MED);
+                     end
+                     else
+                     begin
+                        popup := 'IEXPLORE.EXE|Static|VALOR DO DOCUMENTO DEVE SER IGUAL A SOMATORIA DOS ATOS';
+                        if wintask.Verifica_Janela_PopUp(popup, valor) = 1 then
+                        begin
+                           wintask.Click_Button('IEXPLORE.EXE|#32770|Windows Internet Explorer','OK');
+                           Sleep(TIME_SLEEP_MED);
+
+                           //confere todos os atos da Nota
+                           if Not IsParam('/semconferencia') then
+                           begin
+                              ret := ConfereAtosDaNota(IntToStr(planJbm.numerodanota), wintask);
+                              if ret <> 1 then
+                              begin
+                                 ShowMessage('Erro finalizando a nota');
+                                 exit;
+                              end
+                              else
+                              begin
+                                 ReleaseFile(planJbm.ObtemDirLck + '\' +IntToStr(planJbm.numerodanota) + '.lck', fhandle);
+                                 try
+                                    winThread.pleaseClose:= true;
+                                 except
+                                 end;
+
+                                 planJbm.dtsNotasPendentes.Close;
+                                 planJbm.dtsNotasPendentes.Open;;
+
+                                 //DBGrid2.SelectedRows.Clear;
+                                 DigitaNotas(DBGrid2.DataSource.DataSet.FieldByName('numeronota').AsString);
+                                 exit;
+                              end;
+                           end
+                           else
+                           begin
+                              ShowMessage('Erro finalizando a nota');
+                              exit;
+                           end;
+                        end
+                        else
+                        begin
+                           ShowMessage('Erro finalizando a nota');
+                           exit;
+                        end;
+                     end;
+                  end;
+                  planJbm.MarcaDocumentoFinalizado;
+                  continue;
+               end;
+
+               planJbm.dtsAtos.tag := 0;
+
+               while not planJbm.dtsAtos.Eof do
+               begin
+                  if FormatDateTime('hh:nn', Now) > '22:00' then
+                     exit;
+
+                  if FileExists(ExtractFilePath(Application.ExeName) + 'ENCERRAR.TXT') then
+                  begin
+                     RenameFile(ExtractFilePath(Application.ExeName) + 'ENCERRAR.TXT', ExtractFilePath(Application.ExeName) + 'ENCERRAR.OK');
+                     exit;
+                  end;
+
+                  planJbm.CarregaCamposDaTabela;
+                  re.lines.add('Digitando processo: ' + planJbm.dtsAtos.FieldByName('gcpj').AsString);
+                  Application.ProcessMessages;
+
+                  planJbm.ObtemValorTotalDaNota;
+
+                  if (ultdocumento <> planJbm.dtsAtos.FieldByName('numeronota').AsString) and
+                     (ultdocumento <> '') then
+                  begin
+                     //envia e-mail de nota finalizada
+                     if Not wintask.EstaNaPagina_CopyText(mainPage, 'Honorários em Cadastramento') then
+                        wintask.ClickHTMLElement(pageGcpj, 'INPUT SUBMIT[VALUE= ''voltar'']');
+                     planJbm.MarcaDocumentoFinalizado;
+                     planJbm.NotificaNotaFinalizada;
+                     break;
+                  end;
+
+                  if (ultdocumento = '') and (not digitando) then //comeca a digitar
+                  begin
+                     planJbm.NotificaNotaIniciada;
+
+                     if planJbm.NotaJaFoiDigitada then
+                     begin
+                        if PosicionaNotaDigitando(true,planJbm.dtsAtos.FieldByName('numeronota').AsString, false,wintask) < 0 then
+                           exit;
+
+                        digitando := true;
+
+                        novototaldigitado := ObtemTotalDigitado;    //tela
+                        antigoTotalDigitado := planJbm.SomaTotalDigitadoDaNota; //banco e dados
+
+                        if (FormatFloat('0.00', novototaldigitado) = FormatFloat('0.00', antigoTotalDigitado)) and
+                           (planJbm.dtsAtos.FieldByName('fgdigitado').AsInteger = 1) then //ja foi digitado. Pode desprezar
+                        begin
+                           planJbm.dtsAtos.Next;
+                           continue;
+                        end;
+
+                        if FormatFloat('0.00', novototaldigitado) <> FormatFloat('0.00', antigoTotalDigitado) then
+                        begin
+                           if antigoTotalDigitado < novototaldigitado then
+                           begin
+                              if FormatFloat('0.00',novototaldigitado) = FormatFloat('0.00', antigoTotalDigitado - planJbm.dtsAtos.fieldbyname('valorcorrigido').asFloat)then
+                              begin
+                                 planJbm.MarcaProcessoDigitado;
+                                 planJbm.dtsAtos.Next;
+                                 continue;
+                              end;
+                           end;
+
+                           //bancode dados é maior
+                           if antigoTotalDigitado > novototaldigitado then
+                           begin
+                              //remove do banco de dados
+                              dmHonorarios.dtsAtosDigitados.Close;
+                              dmHonorarios.dtsAtosDigitados.CommandText := 'select * from tbplanilhasatos where numeronota = ' + DBGrid2.DataSource.DataSet.FieldByName('numeronota').AsString +
+                                                                           ' and fgdigitado = 1 ' +
+                                                                           'order by gcpj, valorCorrigido';
+                              dmHonorarios.dtsAtosDigitados.Open;
+
+                              if not dmHonorarios.dtsAtosDigitados.Eof then
+                              begin
+                                 dmHonorarios.dtsAtosDigitados.Last;
+
+                                 while not dmHonorarios.dtsAtosDigitados.Bof do
+                                 begin
+                                    if FormatFloat('0.00',novototaldigitado) <> FormatFloat('0.00', antigoTotalDigitado - dmHonorarios.dtsAtosDigitados.fieldbyname('valorcorrigido').asFloat)then
+                                    begin
+                                         dmHonorarios.dtsAtosDigitados.Prior;
+                                         continue;
+                                    end;
+
+                                    //marca como não digitado
+                                    dmHonorarios.adoCmd.CommandText := 'update tbplanilhasatos set fgdigitado=0, datahoradigitacao=null ' +
+                                                                       'where idescritorio = ' + dmHonorarios.dtsAtosDigitados.FieldByName('idescritorio').AsString + ' and ' +
+                                                                       'idplanilha = ' + dmHonorarios.dtsAtosDigitados.FieldByName('idplanilha').AsString + ' and ' +
+                                                                       'linhaplanilha = ' + dmHonorarios.dtsAtosDigitados.FieldByName('linhaplanilha').AsString + ' and ' +
+                                                                       'sequencia = ' + dmHonorarios.dtsAtosDigitados.FieldByName('sequencia').AsString;
+                                    dmHonorarios.adoCmd.Execute;
+
+                                    ReleaseFile(planJbm.ObtemDirLck + '\' +IntToStr(planJbm.numerodanota) + '.lck', fhandle);
+                                    try
+                                       winThread.pleaseClose:= true;
+                                    except
+                                    end;
+
+                                    planJbm.dtsNotasPendentes.Close;
+                                    planJbm.dtsNotasPendentes.Open;;
+
+                                    //DBGrid2.SelectedRows.Clear;
+                                    DigitaNotas(DBGrid2.DataSource.DataSet.FieldByName('numeronota').AsString);
+                                    exit;
+                                 end;
+                                 ShowMessage('Erro inesperado');
+                                 exit;
+                              end;
+                           end;
+
+                           if Not IsParam('/semconferencia') then
+                           begin
+                              ret := ConfereAtosDaNota(IntToStr(planJbm.numerodanota), wintask);
+                              if ret <> 1 then
+                              begin
+                                 ShowMessage('Valores digitados não conferem');
+                                 exit;
+                              end
+                              else
+                              begin
+                                 ReleaseFile(planJbm.ObtemDirLck + '\' +IntToStr(planJbm.numerodanota) + '.lck', fhandle);
+                                 try
+                                    winThread.pleaseClose:= true;
+                                 except
+                                 end;
+
+                                 planJbm.dtsNotasPendentes.Close;
+                                 planJbm.dtsNotasPendentes.Open;;
+
+                                 //DBGrid2.SelectedRows.Clear;
+                                 DigitaNotas(DBGrid2.DataSource.DataSet.FieldByName('numeronota').AsString);
+                                 exit;
+                              end;
+                           end
+                           else
+                           begin
+                              ShowMessage('Valores digitados não conferem');
+                              exit;
+                           end;
+                        end;
+                     end
+                     else
+                     begin
+                        if PosicionaNotaNova < 0 then
+                           exit;
+                        ultdocumento := planJbm.dtsAtos.FieldByName('numeronota').AsString;
+                     end;
+                  end;
+
+                  digitando := true;
+
+                  planjbm.tipoProcesso := planJbm.dtsAtos.FieldByName('fgtipoprocesso').asString;
+
+                  wintask.WriteHTML(pageGcpj, 'INPUT TEXT[NAME= ''despesaHonorariosProcessoVO.co'']', planJbm.dtsAtos.FieldByName('gcpj').AsString);
+                  Sleep(5);
+
+                  wintask.ClickHTMLElement(pageGcpj, 'INPUT SUBMIT[VALUE= ''pesquisar'']');
+                  Sleep(TIME_SLEEP_MED*2);
+
+                  fname := wintask.EstaNaPagina_NotepadCodePage('IEXPLORE.EXE|Internet Explorer_Server|GCPJ - Gestão e Controle de Processos Jurídicos - Windows Internet Explorer|1',//mainPage,
+                                                                rightDown, rightUp,
+                                                                leftDown, leftUp,
+                                                                'NOTEPAD.EXE|Notepad|finHonorariosNovoAction',
+                                                                'Documento do Prestador: ',
+                                                                false);
+                  if fname = '' then
+                  begin
+                     re.lines.Add('Erro');
+
+                     if Not wintask.EstaNaPagina_CopyText(mainPage, 'Honorários em Cadastramento') then
+                        wintask.ClickHTMLElement(pageGcpj, 'INPUT SUBMIT[VALUE= ''voltar'']');
+                     Sleep(TIME_SLEEP_MIN);
+
+                     ReleaseFile(planJbm.ObtemDirLck + '\' +IntToStr(planJbm.numerodanota) + '.lck', fhandle);
+
+                     planJbm.dtsNotasPendentes.Close;
+                     planJbm.dtsNotasPendentes.Open;;
+
+                     //DBGrid2.SelectedRows.Clear;
+                     DigitaNotas(DBGrid2.DataSource.DataSet.FieldByName('numeronota').AsString);
+                     exit;
+                  end;
+
+                  try
+                     valor := ObtemDependenciaDigitar;
+                     if valor = '' then
+                     begin
+                        Sleep(1000);
+                        MyDeleteFile(fname);
+
+                        fname := wintask.EstaNaPagina_NotepadCodePage(mainPage,
+                                                                      rightDown, rightUp,
+                                                                      leftDown, leftUp,
+                                                                      'NOTEPAD.EXE|Notepad|finHonorariosNovoAction',
+                                                                      'Documento do Prestador: ',
+                                                                      false);
+                        if fname = '' then
+                        begin
+                           if Not wintask.EstaNaPagina_CopyText(mainPage, 'Honorários em Cadastramento') then
+                              wintask.ClickHTMLElement(pageGcpj, 'INPUT SUBMIT[VALUE= ''voltar'']');
+                           Sleep(TIME_SLEEP_MIN);
+
+                           ReleaseFile(planJbm.ObtemDirLck + '\' +IntToStr(planJbm.numerodanota) + '.lck', fhandle);
+
+                           planJbm.dtsNotasPendentes.Close;
+                           planJbm.dtsNotasPendentes.Open;;
+
+                           //DBGrid2.SelectedRows.Clear;
+                           DigitaNotas(DBGrid2.DataSource.DataSet.FieldByName('numeronota').AsString);
+                           exit;
+                        end;
+
+                        valor := ObtemDependenciaDigitar;
+                        if valor = '' then
+                        begin
+                           re.lines.Add('Erro obtendo o código da dependência');
+
+                           if Not wintask.EstaNaPagina_CopyText(mainPage, 'Honorários em Cadastramento') then
+                              wintask.ClickHTMLElement(pageGcpj, 'INPUT SUBMIT[VALUE= ''voltar'']');
+                           Sleep(TIME_SLEEP_MIN);
+
+                           ReleaseFile(planJbm.ObtemDirLck + '\' +IntToStr(planJbm.numerodanota) + '.lck', fhandle);
+//                           winThread.PleaseClose:=true;
+
+                           planJbm.dtsNotasPendentes.Close;
+                           planJbm.dtsNotasPendentes.Open;;
+
+                           //DBGrid2.SelectedRows.Clear;
+                           DigitaNotas(DBGrid2.DataSource.DataSet.FieldByName('numeronota').AsString);
+                           exit;
+                        end;
+                     end;
+
+                     (*
+                     if StrToInt(valor) = 5404 then
+                     begin
+                        //verifica se tem o 4027
+                        planJbm.ObtemReclamadasDoProcesso;
+                        while not planJbm.dtsReclamadas.Eof do
+                        begin
+                           if planJbm.dtsReclamadas.FieldByName('codigoreclamada').AsInteger = 4027 then
+                           begin
+                              valor := '4027';
+                              break;
+                           end;
+                           planJbm.dtsReclamadas.Next;
+                        end;
+                     end;*)
+
+                     if FileExists(ExtractFilePath(Application.ExeName) + 'ENCERRAR.TXT') then
+                     begin
+                        RenameFile(ExtractFilePath(Application.ExeName) + 'ENCERRAR.TXT', ExtractFilePath(Application.ExeName) + 'ENCERRAR.OK');
+                        exit;
+                     end;
+
+                     wintask.SelectHTMLItem('GCPJ - Gestão e Controle de Processos Jurídicos', 'SELECT[NAME= ''selDependencia'']', Trim(valor));
+                     Sleep(TIME_SLEEP_MIN);
+
+                     if ie8 then
+                        popup := 'IEXPLORE.EXE|Static|Esta dependência foi encerrada, deseja alterá-la para'
+                     else
+                        popup := 'IEXPLORE.EXE|Static|Esta dependência foi encerrada, deseja alterá-la para';
+
+                     if wintask.Verifica_Janela_PopUp(popup, valor) = 1 then
+                     begin
+                        wintask.Click_Button('IEXPLORE.EXE|#32770|Windows Internet Explorer', 'OK');
+                        Sleep(TIME_SLEEP_MIN);
+                     end;
+
+                     wintask.Click_Mouse(mainPage, 774,326);
+                     Sleep(TIME_SLEEP_ZERO);
+
+                     wintask.SendKey(mainPage,
+                                     '<PageDown>');
+                     Sleep(TIME_SLEEP_ZERO);
+
+                     andamentoDigitar := ObtemTipoAndamento(planJbm.dtsAtos.FieldByName('tipoandamento').AsString, planJbm.tipoProcesso, planJbm.dtsAtos.FieldByName('motivobaixa').AsString);
+                     if andamentoDigitar = '' then
+                     begin
+                        planjbm.NotificaErro('Falta tipo ato');
+                        ShowMessage('Falta tipo ato');
+                        exit;
+                     end;
+
+                     wintask.SelectHTMLItem(pageGcpj, 'SELECT[NAME= ''despesaHonorariosProcessoVO.c'']', andamentoDigitar);
+
+                     Sleep(TIME_SLEEP_med);
+
+                     wintask.ClickHTMLElement(pageGcpj, 'INPUT SUBMIT[VALUE= ''incluir'']');
+                     Sleep(TIME_SLEEP_MED);
+
+                     passagem := 0;
+                     while true do
+                     begin
+                        if ie8 then
+                           popup := 'IEXPLORE.EXE|Static|O campo Data do Ato é obrigatório'
+                        else
+                           popup := 'IEXPLORE.EXE|Static|O campo Data do Ato é obrigatório';
+
+                        if wintask.Verifica_Janela_PopUp(popup, valor, false) = 1 then
+                        begin
+                           if ie8 then
+                              wintask.Click_Button('IEXPLORE.EXE|#32770|Mensagem da página da web','OK')
+                           else
+                              wintask.Click_Button('IEXPLORE.EXE|#32770|Windows Internet Explorer', 'OK');
+                           Sleep(TIME_SLEEP_MIN);
+
+                           wintask.SendKey(mainPage,
+                                           wintask.FormataNumericField(dataDigitar));
+                           Sleep(TIME_SLEEP_zero);
+
+                           wintask.SendKey(mainPage,
+                                           '<Tab><Tab>');
+                           Sleep(TIME_SLEEP_ZERO);
+
+                           if (planJbm.dtsAtos.FieldByName('valorcorrigido').AsFloat = 0.00) and
+                              (planJbm.dtsAtos.FieldByName('tipoandamento').AsString = 'HONORARIOS INICIAIS') then
+                           begin
+                               if FormatDateTime('yyyy/mm/dd', planjbm.dtsatos.FieldByName('datadoato').AsDateTime) >= '2012/05/01' then
+                                  valor := '5200'
+                               else
+                                  valor := '5000';
+                           end
+                           else
+                              valor := RemoveNaoNumericos(FormatFloat('#,##0.00', planJbm.dtsAtos.FieldByName('valorcorrigido').AsFloat));
+
+                           Sleep(time_sleep_zero);
+                           wintask.SendKey(mainPage,
+                                           '<Del><Del><Del><Del><Del><Del><Del><Del><Del><Del>');
+                           Sleep(TIME_SLEEP_ZERO);
+
+                           valDigitar := '';
+                           while Length(valor) > 0 do
+                           begin
+                              valDigitar := valDigitar + '<Num ' + Copy(valor, 1, 1) + '>';
+                              valor := Copy(valor, 2, length(valor));
+                           end;
+                           wintask.SendKey(mainPage,
+                                           valDigitar);
+                           Sleep(TIME_SLEEP_ZERO);
+
+                           wintask.ClickHTMLElement(pageGcpj, 'INPUT SUBMIT[VALUE= ''incluir'']');
+                           Sleep(TIME_SLEEP_MIN);
+
+
+                           if ie8 then
+                              popUp := 'IEXPLORE.EXE|Static|O campo Valor do Ato é obrigatório'
+                           else
+                              popUp := 'IEXPLORE.EXE|Static|O campo Valor do Ato é obrigatório';
+
+                           Sleep(TIME_SLEEP_ZERO);
+
+                           if wintask.Verifica_Janela_PopUp(popup, valor) = 1 then
+                           begin
+                              if ie8 then
+                                 wintask.Click_Button('IEXPLORE.EXE|#32770|Mensagem da página da web','OK')
+                              else
+                                 wintask.Click_Button('IEXPLORE.EXE|#32770|Windows Internet Explorer', 'OK');
+                              Sleep(TIME_SLEEP_MIN);
+                              valor := RemoveNaoNumericos(FormatFloat('0.00', planJbm.dtsAtos.FieldByName('valor').AsFloat));
+                              valDigitar := '';
+                              while Length(valor) > 0 do
+                              begin
+                                 valDigitar := valDigitar + '<Num ' + Copy(valor, 1, 1) + '>';
+                                 valor := Copy(valor, 2, length(valor));
+                              end;
+                              wintask.SendKey(mainPage,
+                                              valDigitar);
+                              Sleep(TIME_SLEEP_MIN);
+
+                              wintask.ClickHTMLElement(pageGcpj, 'INPUT SUBMIT[VALUE= ''incluir'']');
+                              Sleep(TIME_SLEEP_MED);
+                              break;
+                           end;
+
+                           break;
+                        end;
+
+                        if ie8 then
+                           popUp := 'IEXPLORE.EXE|Static|O campo Código do Destinatário é obrigatório.'
+                        else
+                           popUp := 'IEXPLORE.EXE|Static|O campo Código do Destinatário é obrigatório.';
+
+                        Sleep(TIME_SLEEP_ZERO);
+
+                        if wintask.Verifica_Janela_PopUp(popup, valor) = 1 then
+                        begin
+                           if ie8 then
+                              wintask.Click_Button('IEXPLORE.EXE|#32770|Mensagem da página da web','OK')
+                           else
+                              wintask.Click_Button('IEXPLORE.EXE|#32770|Windows Internet Explorer', 'OK');
+                           Sleep(TIME_SLEEP_MIN);
+
+                           wintask.WriteHTML(pageGcpj, 'INPUT TEXT[NAME= ''despesaHonorariosProcessoVO.composicaoDespHonorariosVO.dependenciaBradescoOnLineVO.c'']',
+                                             planJbm.dtsAtos.FieldByName('empresaligadaagrupar').AsString);
+                           Sleep(TIME_SLEEP_MED);
+
+                           wintask.ClickHTMLElement(pageGcpj, 'INPUT BUTTON[NAME= ''null'',INDEX=''3'']');
+                           Sleep(TIME_SLEEP_MED);
+
+                           wintask.ClickHTMLElement(pageGcpj, 'INPUT SUBMIT[VALUE= ''incluir'']');
+                           Sleep(TIME_SLEEP_MED);
+                           continue;
+                        end;
+
+                        if ie8 then
+                           popUp := 'IEXPLORE.EXE|Static|O campo Valor do Ato é obrigatório'
+                        else
+                           popUp := 'IEXPLORE.EXE|Static|O campo Valor do Ato é obrigatório';
+
+                        Sleep(TIME_SLEEP_ZERO);
+                           
+                        if wintask.Verifica_Janela_PopUp(popup, valor) = 1 then
+                        begin
+                           if ie8 then
+                              wintask.Click_Button('IEXPLORE.EXE|#32770|Mensagem da página da web','OK')
+                           else
+                              wintask.Click_Button('IEXPLORE.EXE|#32770|Windows Internet Explorer', 'OK');
+                           Sleep(TIME_SLEEP_MIN);
+                           valor := RemoveNaoNumericos(FormatFloat('0.00', planJbm.dtsAtos.FieldByName('valor').AsFloat));
+                           valDigitar := '';
+                           while Length(valor) > 0 do
+                           begin
+                              valDigitar := valDigitar + '<Num ' + Copy(valor, 1, 1) + '>';
+                              valor := Copy(valor, 2, length(valor));
+                           end;
+                           wintask.SendKey(mainPage,
+                                           valDigitar);
+                           Sleep(TIME_SLEEP_MIN);
+
+                           wintask.ClickHTMLElement(pageGcpj, 'INPUT SUBMIT[VALUE= ''incluir'']');
+                           Sleep(TIME_SLEEP_MED);
+                           break;
+                        end;
+
+                        if ie8 then
+                           popup := 'IEXPLORE.EXE|Static|O campo Dependência é obrigatório'
+                        else
+                           popup := 'IEXPLORE.EXE|Static|O campo Dependência é obrigatório';
+
+                        Sleep(TIME_SLEEP_ZERO);
+                           
+                        if wintask.Verifica_Janela_PopUp(popup, valor) = 1 then
+                        begin
+                           if ie8 then
+                              wintask.Click_Button('IEXPLORE.EXE|#32770|Mensagem da página da web','OK')
+                           else
+                              wintask.Click_Button('IEXPLORE.EXE|#32770|Windows Internet Explorer', 'OK');
+                           Sleep(TIME_SLEEP_MIN);
+                           planJbm.NotificaErro('Erro na captura do nome da Dependencia');
+
+                           wintask.ClickHTMLElement(pageGcpj, 'INPUT SUBMIT[VALUE= ''voltar'']');
+                           Sleep(TIME_SLEEP_MIN);
+
+                           ReleaseFile(planJbm.ObtemDirLck + '\' +IntToStr(planJbm.numerodanota) + '.lck', fhandle);
+                           try
+                              winThread.pleaseClose:= true;
+                           except
+                           end;
+
+                           planJbm.dtsNotasPendentes.Close;
+                           planJbm.dtsNotasPendentes.Open;;
+
+//                           ShowMessage('Erro na captura do nome da Dependencia');
+                           //DBGrid2.SelectedRows.Clear;
+                           DigitaNotas(DBGrid2.DataSource.DataSet.FieldByName('numeronota').AsString);
+                           exit;
+                        end;
+
+                        if ie8 then
+                           popup := 'IEXPLORE.EXE|Static|DATA DO ATO INVALIDO'
+                        else
+                           popup := 'IEXPLORE.EXE|Static|DATA DO ATO INVALIDO';
+
+                        Sleep(TIME_SLEEP_ZERO);
+                           
+                        if wintask.Verifica_Janela_PopUp(popup, valor) = 1 then
+                        begin
+                           if ie8 then
+                              wintask.Click_Button('IEXPLORE.EXE|#32770|Mensagem da página da web','OK')
+                           else
+                              wintask.Click_Button('IEXPLORE.EXE|#32770|Windows Internet Explorer', 'OK');
+                           Sleep(TIME_SLEEP_MIN);
+                           planJbm.NotificaErro('Data digitada inválida');
+
+                           wintask.ClickHTMLElement(pageGcpj, 'INPUT SUBMIT[VALUE= ''voltar'']');
+                           Sleep(TIME_SLEEP_MIN);
+
+                           ReleaseFile(planJbm.ObtemDirLck + '\' +IntToStr(planJbm.numerodanota) + '.lck', fhandle);
+                           try
+                              winThread.pleaseClose:= true;
+                           except
+                           end;
+
+                           planJbm.dtsNotasPendentes.Close;
+                           planJbm.dtsNotasPendentes.Open;;
+
+//                           ShowMessage('Erro na captura do nome da Dependencia');
+                           //DBGrid2.SelectedRows.Clear;
+                           DigitaNotas(DBGrid2.DataSource.DataSet.FieldByName('numeronota').AsString);
+                           exit;
+                        end;
+
+
+                        Sleep(TIME_SLEEP_MED*20);
+
+                        if wintask.EstaNaPagina_CopyText(mainPage, 'Atos Pagos no Processo') then
+                        begin
+                           wintask.ClickHTMLElement('GCPJ - Gestão e Controle de Processos Jurídicos', 'INPUT BUTTON[VALUE= ''confirmar inclusão'']');
+                           Sleep(TIME_SLEEP_ZERO);
+                           break;
+                        end;
+
+                        if ie8 then
+                           popup := 'IEXPLORE.EXE|Static|Pressione a lupa para realizar a pesquisa'
+                        else
+                           popup := 'IEXPLORE.EXE|Static|Pressione a lupa para realizar a pesquisa';
+
+                        Sleep(TIME_SLEEP_ZERO);
+
+                        if wintask.Verifica_Janela_PopUp(popup, valor) = 1 then
+                        begin
+                           if ie8 then
+                              wintask.Click_Button('IEXPLORE.EXE|#32770|Mensagem da página da web','OK')
+                           else
+                              wintask.Click_Button('IEXPLORE.EXE|#32770|Windows Internet Explorer', 'OK');
+
+                           wintask.ClickHTMLElement(pageGcpj, 'INPUT SUBMIT[VALUE= ''voltar'']');
+                           Sleep(TIME_SLEEP_MIN);
+
+                           ReleaseFile(planJbm.ObtemDirLck + '\' +IntToStr(planJbm.numerodanota) + '.lck', fhandle);
+                           try
+                              winThread.pleaseClose:= true;
+                           except
+                           end;
+
+                           planJbm.dtsNotasPendentes.Close;
+                           planJbm.dtsNotasPendentes.Open;;
+
+//                           ShowMessage('Erro na captura do nome da Dependencia');
+                           //DBGrid2.SelectedRows.Clear;
+                           DigitaNotas(DBGrid2.DataSource.DataSet.FieldByName('numeronota').AsString);
+                           exit;
+                        end;
+
+                        Inc(passagem);
+                        if passagem > 5 then
+                        begin
+                           break;
+                           planJbm.NotificaErro('Erro de posicionamento de tela');
+//                           ShowMessage('Erro de posicionamento de tela');
+//                           exit;
+                        end;
+                        Sleep(500);
+                     end;
+
+                     Sleep(TIME_SLEEP_MED*20);
+
+                     if wintask.EstaNaPagina_CopyText(mainPage, 'Atos Pagos no Processo') then
+                     begin
+                        wintask.ClickHTMLElement('GCPJ - Gestão e Controle de Processos Jurídicos', 'INPUT BUTTON[VALUE= ''confirmar inclusão'']');
+                        Sleep(TIME_SLEEP_ZERO);
+                     end;
+                  finally
+                     MyDeleteFile(fname);
+                  end;
+
+                  Sleep(TIME_SLEEP_MIN);
+
+                  novototaldigitado := ObtemTotalDigitado;
+                  if novototaldigitado = antigoTotalDigitado then
+                  begin
+                     Sleep(TIME_SLEEP_MED);
+                     novototaldigitado := ObtemTotalDigitado;
+                  end;
+
+                  totaldigitado := planJbm.SomaTotalDigitadoDaNota;
+                  antigoTotalDigitado := novototaldigitado;
+
+                  if FormatFloat('0.00', totaldigitado + planJbm.dtsAtos.FieldByName('valorcorrigido').AsFloat) <> FormatFloat('0.00', novototaldigitado) then
+                  begin
+                     if FormatFloat('0.00', totaldigitado) = FormatFloat('0.00', novototaldigitado) then   //nao entrou a ultimadigitacao
+                     begin
+                        ret := VerificaTela(true);
+                        case ret of
+                           0 : begin
+                              Sleep(TIME_SLEEP_ZERO);
+                              try
+                                 winThread.pleaseClose:= true;
+                              except
+                              end;
+                              continue;
+                           end;
+
+                           1 : begin
+                              wintask.ClickHTMLElement(pageGcpj, 'INPUT SUBMIT[VALUE= ''voltar'']');
+                              Sleep(TIME_SLEEP_MIN);
+
+                              ReleaseFile(planJbm.ObtemDirLck + '\' +IntToStr(planJbm.numerodanota) + '.lck', fhandle);
+                              try
+                                 winThread.pleaseClose:= true;
+                              except
+                              end;
+
+                              planJbm.dtsNotasPendentes.Close;
+                              planJbm.dtsNotasPendentes.Open;;
+
+                              //DBGrid2.SelectedRows.Clear;
+                              DigitaNotas(DBGrid2.DataSource.DataSet.FieldByName('numeronota').AsString);
+                              exit;
+                           end;
+                           -1, -2 : begin
+                              ReleaseFile(planJbm.ObtemDirLck + '\' +IntToStr(planJbm.numerodanota) + '.lck', fhandle);
+                              try
+                                 winThread.pleaseClose:= true;
+                              except
+                              end;
+                              ShowMessage('Erro inesperado');
+                              exit;
+                           end;
+                        end;
+                     end;
+                  end;
+
+      //           totaldigitado := totaldigitado + planJbm.dtsAtos.FieldByName('valorcorrigido').AsFloat;
+                  planJbm.MarcaProcessoDigitado;
+                  if FileExists(ExtractFilePath(Application.ExeName) + 'ENCERRAR.TXT') then
+                  begin
+                     RenameFile(ExtractFilePath(Application.ExeName) + 'ENCERRAR.TXT', ExtractFilePath(Application.ExeName) + 'ENCERRAR.OK');
+                     exit;
+                  end;
+                  planJbm.dtsAtos.Next;
+                  if planJbm.dtsAtos.eof then
+                  begin
+                     if ultdocumento <> '' then
+                     begin
+                        //se foi finalizado com os valores corretos Finaliza a nota e notifica
+                        if planJbm.totalAtos = planJbm.ObtemTotalAtosDigitados then
+                        begin
+                           wintask.ClickHTMLElement(pageGcpj, 'INPUT SUBMIT[VALUE= ''finalizar nota'']');
+                           Sleep(TIME_SLEEP_MED);
+
+                           if ie8 then
+                              popup := 'IEXPLORE.EXE|Static|Operação realizada com sucesso'
+                           else
+                              popup :='IEXPLORE.EXE|Static|Operação realizada com sucesso';
+                           if wintask.Verifica_Janela_PopUp(popup, valor) = 1 then
+                           begin
+                              wintask.Click_Button('IEXPLORE.EXE|#32770|Windows Internet Explorer','OK');
+                              Sleep(TIME_SLEEP_MED);
+                           end
+                           else
+                           begin
+                              popup := 'IEXPLORE.EXE|Static|VALOR DO DOCUMENTO DEVE SER IGUAL A SOMATORIA DOS ATOS';
+                              if wintask.Verifica_Janela_PopUp(popup, valor) = 1 then
+                              begin
+                                 wintask.Click_Button('IEXPLORE.EXE|#32770|Windows Internet Explorer','OK');
+                                 Sleep(TIME_SLEEP_MED);
+
+                                 //confere todos os atos da Nota
+                                 ret := ConfereAtosDaNota(IntToStr(planJbm.numerodanota),wintask);
+                                 if ret <> 1 then
+                                 begin
+                                    ShowMessage('Erro finalizando a nota');
+                                    exit;
+                                 end
+                                 else
+                                 begin
+                                    ReleaseFile(planJbm.ObtemDirLck + '\' +IntToStr(planJbm.numerodanota) + '.lck', fhandle);
+                                    try
+                                       winThread.pleaseClose:= true;
+                                    except
+                                    end;
+
+                                    planJbm.dtsNotasPendentes.Close;
+                                    planJbm.dtsNotasPendentes.Open;;
+
+                                    //DBGrid2.SelectedRows.Clear;
+                                    DigitaNotas(DBGrid2.DataSource.DataSet.FieldByName('numeronota').AsString);
+                                    exit;
+                                 end;  
+                              end
+                              else
+                              begin
+                                 ShowMessage('Erro finalizando a nota');
+                                 exit;
+                              end;
+                           end;
+                        end
+                        else
+                           wintask.ClickHTMLElement(pageGcpj, 'INPUT SUBMIT[VALUE= ''voltar'']');
+                        planJbm.NotificaNotaFinalizada;
+                        planJbm.MarcaDocumentoFinalizado;
+                        digitando := false;
+                        break;
+                     end;
+                  end;
+               end;
+
+               if digitando then
+               begin
+                  if planJbm.totalAtos = planJbm.ObtemTotalAtosDigitados then
+                  begin
+                     wintask.ClickHTMLElement(pageGcpj, 'INPUT SUBMIT[VALUE= ''finalizar nota'']');
+                     Sleep(TIME_SLEEP_MED);
+
+                     if ie8 then
+                        popup := 'IEXPLORE.EXE|Static|Operação realizada com sucesso'
+                     else
+                        popup :='IEXPLORE.EXE|Static|Operação realizada com sucesso';
+                     if wintask.Verifica_Janela_PopUp(popup, valor) = 1 then
+                     begin
+                        wintask.Click_Button('IEXPLORE.EXE|#32770|Windows Internet Explorer','OK');
+                        Sleep(TIME_SLEEP_MED);
+                     end
+                     else
+                     begin
+                        popup := 'IEXPLORE.EXE|Static|VALOR DO DOCUMENTO DEVE SER IGUAL A SOMATORIA DOS ATOS';
+                        if wintask.Verifica_Janela_PopUp(popup, valor) = 1 then
+                        begin
+                           wintask.Click_Button('IEXPLORE.EXE|#32770|Windows Internet Explorer','OK');
+                           Sleep(TIME_SLEEP_MED);
+
+                           //confere todos os atos da Nota
+                           ret := ConfereAtosDaNota(IntToStr(planJbm.numerodanota), wintask);
+                           if ret <> 1 then
+                           begin
+                              ShowMessage('Erro finalizando a nota');
+                              exit;
+                           end
+                           else
+                           begin
+                              ReleaseFile(planJbm.ObtemDirLck + '\' +IntToStr(planJbm.numerodanota) + '.lck', fhandle);
+                              try
+                                 winThread.pleaseClose:= true;
+                              except
+                              end;
+
+                              planJbm.dtsNotasPendentes.Close;
+                              planJbm.dtsNotasPendentes.Open;;
+
+                              //DBGrid2.SelectedRows.Clear;
+                              DigitaNotas(DBGrid2.DataSource.DataSet.FieldByName('numeronota').AsString);
+                              exit;
+                           end;
+                        end
+                        else
+                        begin
+                           ShowMessage('Erro finalizando a nota');
+                           exit;
+                        end;
+                     end;
+                  end
+                  else
+                     wintask.ClickHTMLElement(pageGcpj, 'INPUT SUBMIT[VALUE= ''voltar'']');
+                  planJbm.NotificaNotaFinalizada;
+                  planJbm.MarcaDocumentoFinalizado;
+               end;
+            finally
+               ReleaseFile(planJbm.ObtemDirLck + '\' +IntToStr(planJbm.numerodanota) + '.lck', fhandle);
+            end;
+         finally
+            wintask.Free;
+         end;
+      end;
+   finally
+      dbGrid2.DataSource.DataSet.EnableControls;
+   end;
+
+   planJbm.dtsNotasPendentes.Close;
+   planJbm.dtsNotasPendentes.Open;
+
+   if planJbm.dtsNotasPendentes.RecordCount = 0 then
+   begin
+      planJbm.dtsPlanilha.Close;
+      planJbm.dtsPlanilha.Open;
+   end;
+end;
+
+procedure TfrmDigitaPlan.BitBtn5Click(Sender: TObject);
+var
+   ini : TIniFile;
+begin
+   ini := TiniFile.Create(ExtractFilePath(Application.ExeName) + 'CONFIG.INI');
+   try
+      if FormatDateTime('dd/mm/yyyy', date) <> ini.ReadString('gcpj', 'reindexacao','') then
+      begin
+         IndexaBasesGCPJ;
+         ini.WriteString('gcpj', 'reindexacao',FormatDateTime('dd/mm/yyyy', date));
+      end;
+   finally
+      ini.Free;
+   end;
+
+   planJbm.idEscritorio := planJbm.dtsPlanilha.FieldByName('idescritorio').AsInteger;
+   planJbm.idplanilha := planJbm.dtsPlanilha.FieldByName('idplanilha').AsInteger;
+   planJbm.sequencia :=  planJbm.dtsPlanilha.FieldByName('sequencia').AsInteger;
+   planJbm.anomesreferencia := planJbm.dtsPlanilha.FieldByName('anomesreferencia').AsString;
+
+   re.lines.Clear;
+
+   planJbm.ObtemProcessosCruzarGcpj(-1);
+
+   while not planJbm.dtsAtos.Eof do
+   begin
+      planJbm.CarregaCamposDaTabela;
+      re.Lines.add('Verificando Empresa Ligada: ' + planJbm.dtsAtos.FieldByName('gcpj').AsString);
+      Application.ProcessMessages;
+      planJbm.GravaEmpresaGrupo(1);
+      planJbm.dtsAtos.Next;
+   end;
+end;
+
+procedure TfrmDigitaPlan.BitBtn6Click(Sender: TObject);
+var
+   ini : TIniFile;
+begin
+   ini := TiniFile.Create(ExtractFilePath(Application.ExeName) + 'CONFIG.INI');
+   try
+      if FormatDateTime('dd/mm/yyyy', date) <> ini.ReadString('gcpj', 'reindexacao','') then
+      begin
+         IndexaBasesGCPJ;
+         ini.WriteString('gcpj', 'reindexacao',FormatDateTime('dd/mm/yyyy', date));
+      end;
+   finally
+      ini.Free;
+   end;
+
+   planJbm.idEscritorio := planJbm.dtsPlanilha.FieldByName('idescritorio').AsInteger;
+   planJbm.idplanilha := planJbm.dtsPlanilha.FieldByName('idplanilha').AsInteger;
+   planJbm.sequencia :=  planJbm.dtsPlanilha.FieldByName('sequencia').AsInteger;
+   planJbm.anomesreferencia := planJbm.dtsPlanilha.FieldByName('anomesreferencia').AsString;
+
+   re.lines.Clear;
+
+   planJbm.ObtemProcessosCruzarGcpj(-1);
+
+   while not planJbm.dtsAtos.Eof do
+   begin
+      planJbm.CarregaCamposDaTabela;
+      re.Lines.add('Revisando duplicidades: ' + planJbm.dtsAtos.FieldByName('gcpj').AsString);
+      Application.ProcessMessages;
+
+
+(*      if (pos('TRABALHISTA', planjbm.dtsatos.FieldByName('tipoandamento').AsString) <> 0) or
+         (Pos('TRABALHO', planJbm.dtsatos.FieldByName('Vara').AsString) <> 0) OR
+         (planJbm.dtsAtos.FieldByName('tipoandamento').AsString = 'INSTRUCAO') then
+         planjbm.tipoprocesso := 'T'
+      else
+         planjbm.tipoprocesso := 'C';  *)
+
+      planjbm.tipoProcesso := planJbm.dtsAtos.FieldByName('fgtipoprocesso').asString;
+
+      if Pos('PREPOSTO', planjbm.dtsatos.FieldByName('tipoandamento').AsString) = 0 then
+      begin
+         dmgcpcj_base_I.ObtemOutrosPagamentosDoProcesso(planJbm.gcpj,
+                                                         planjbm.dtsatos.FieldByName('tipoandamento').AsString,
+                                                         UpperCase(planJbm.dtsPlanilha.FieldByName('nomeescritorio').AsString),
+                                                         planjbm.tipoprocesso);
+         if dmgcpcj_base_I.dts.RecordCount > 0 then
+         begin
+            if (planjbm.dtsatos.FieldByName('tipoandamento').AsString = 'AVULSO TRABALHISTA') OR
+               (planJbm.dtsAtos.FieldByName('tipoandamento').AsString = 'INSTRUCAO') then
+            begin
+               if dmgcpcj_base_I.dts.RecordCount >= 2 then
+               begin
+                  planJbm.GravaOcorrencia(2, 'Ato já foi pago anteriormente');
+                  planJbm.MarcaProcessoCruzadoGcpj(9);
+                  planJbm.RemoveNotaProcesso;
+               end
+            end
+            else
+            begin
+               planJbm.GravaOcorrencia(2, 'Ato já foi pago anteriormente');
+               planJbm.MarcaProcessoCruzadoGcpj(9);
+               planJbm.RemoveNotaProcesso;
+            end;
+         end;
+      end;
+      planJbm.dtsAtos.Next;
+   end;
+end;
+
+procedure TfrmDigitaPlan.BitBtn7Click(Sender: TObject);
+var
+   arquivo : Tstringlist;
+   arquivoout: TstringList;
+   i, p : integer;
+   estagio : integer;
+   linha, valor : string;
+begin
+   arquivo := TStringlist.Create;
+   try
+      arquivo.LoadFromFile('c:\presenta\temp\atos.txt');
+
+      arquivoOut := TstringlIst.Create;
+      try
+         estagio := 0;
+         for i := 0 to arquivo.Count - 1 do
+         begin
+            case estagio of
+               0 : begin
+                  if Pos('Processo Ato Data do Ato  Valor Dependência', arquivo.strings[i]) = 0 then
+                     continue;
+                  Inc(estagio);
+               end;
+               1 : begin
+                  if Pos('[', arquivo.strings[i]) <> 0 then
+                  begin
+                     estagio := 0;
+                     continue;
+                  end;
+
+                  linha := Trim(arquivo.strings[i]);
+                  valor := trim(copy(linha, 1, 10));
+
+                  linha := Copy(linha, 11, length(linha));
+                  p := Pos('01/11/2011', linha);
+                  valor := valor + ';' + Trim(Copy(linha, 1, p-1));
+
+                  linha := Trim(Copy(linha, p+10, length(linha)));
+                  p := pos(' ', linha);
+                  valor := valor + ';' + Trim(Copy(linha, 1, p-1));
+                  arquivoout.add(valor);
+               end;
+
+            end;
+         end;
+         arquivoout.SaveToFile('c:\presenta\temp\digitados.txt');
+      finally
+         arquivoout.free;
+      end;
+   finally
+      arquivo.free;
+   end;
+
+end;
+
+procedure TfrmDigitaPlan.BitBtn1Click(Sender: TObject);
+begin
+   if MessageDlg('Tem certeza que deseja excluir a planilha?', mtConfirmation, [mbYes, mbNo], 0) <> mrYes then
+      exit;
+
+   planJbm.idEscritorio := planJbm.dtsPlanilha.FieldByName('idescritorio').AsInteger;
+   planJbm.idplanilha := planJbm.dtsPlanilha.FieldByName('idplanilha').AsInteger;
+   planJbm.sequencia :=  planJbm.dtsPlanilha.FieldByName('sequencia').AsInteger;
+   planJbm.anomesreferencia := planJbm.dtsPlanilha.FieldByName('anomesreferencia').AsString;
+   planJbm.RemovePlanilhas(planJbm.idplanilha, planJbm.idEscritorio, planJbm.anomesreferencia);
+   planJbm.dtsPlanilha.Close;
+   planJbm.dtsPlanilha.Open;
+   ShowMessage('Planilha removida com sucesso');
+end;
+
+procedure TfrmDigitaPlan.DBGrid2DblClick(Sender: TObject);
+begin
+   if dbGrid2.SelectedRows.Count > 1 then
+   begin
+      ShowMessage('Somente uma nota pode ser selecionada para edição');
+      exit;
+   end;
+
+   if dbGrid2.SelectedRows.Count = 0 then
+   begin
+      ShowMessage('Nenhuma nota selecionada para edição');
+      exit;
+   end;
+
+
+   frmAdosDigitados := TfrmAdosDigitados.Create(nil);
+   try
+      frmAdosDigitados.lblNumeroNota.Caption := 'Atos digitados da nota ' + DBGrid2.DataSource.DataSet.FieldByName('numeronota').AsString;
+
+      dmHonorarios.dtsAtosDigitados.Close;
+      dmHonorarios.dtsAtosDigitados.CommandText := 'select * from tbplanilhasatos where numeronota = ' + DBGrid2.DataSource.DataSet.FieldByName('numeronota').AsString +
+                                                   ' and fgdigitado = 1 ' +
+                                                   'order by gcpj';
+      dmHonorarios.dtsAtosDigitados.Open;
+
+      if dmHonorarios.dtsAtosDigitados.RecordCount = 0 then
+      begin
+         ShowMessage('Nenhum ato digitado para esta nota');
+         exit;
+      end;
+
+      frmAdosDigitados.valorDigitado := dbgrid3.DataSource.DataSet.FieldByName('valordigitado').AsFloat;
+      frmAdosDigitados.totalDigitado.Text  := FormatFloat('#,##0.00',dbgrid3.DataSource.DataSet.FieldByName('valordigitado').AsFloat);
+      frmAdosDigitados.numeronota := DBGrid2.DataSource.DataSet.FieldByName('numeronota').AsString;
+      frmAdosDigitados.ShowModal;
+
+      if frmAdosDigitados.alterado then
+      begin
+         planJbm.dtsNotasPendentes.Close;
+         planJbm.dtsNotasPendentes.Open;
+
+         if planJbm.dtsNotasPendentes.RecordCount = 0 then
+         begin
+            planJbm.dtsPlanilha.Close;
+            planJbm.dtsPlanilha.Open;
+         end;
+      end;
+   finally
+      frmAdosDigitados.Free;
+   end;
+end;
+
+procedure TfrmDigitaPlan.Retornarnotafinalizada1Click(Sender: TObject);
+begin
+   frmRetornarFinalizada := TFrmRetornarFinalizada.Create(nil);
+   try
+      if frmRetornarFinalizada.ShowModal = mrOk then
+      begin
+         planJbm.dtsPlanilha.Close;
+         planJbm.dtsPlanilha.Open;
+      end;
+   finally
+      frmRetornarFinalizada.Free;
+   end;
+end;
+
+function TfrmDigitaPlan.ObtemTipoAndamento(andamento: string; tipoProcesso: string; motivoBaixa: string): string;
+begin
+   result := '';
+   if UpperCase(andamento) = 'RECURSO EM FASE DE EXECUÇÃO' then
+      result := 'RECURSO NA FASE DE EXECUCAO'
+   else
+   if (Pos('RECURSO', UpperCase(andamento)) <> 0) OR
+      (Pos('AGRAVO FAT', UpperCase(andamento)) <> 0) then
+      result := 'RECURSO'
+   else
+   if Pos('TUTELA', UpperCase(andamento)) <> 0 then
+      result := 'CONTESTACAO'
+   else
+   if Pos('PREPOSTO', UpperCase(andamento)) <> 0 then
+      result := 'PREPOSTO'
+   else
+   if (Pos('AVULSO TRAB', UpperCase(andamento)) <> 0) or
+      (((tipoprocesso = 'TR') OR (tipoprocesso = 'TO') OR (tipoprocesso = 'TA')) and
+      (UpperCase(andamento) = 'AUDIÊNCIA TRABALHISTA')or (UpperCase(andamento) = 'AUDIENCIA TRABALHISTA') or
+      (UpperCase(andamento) = 'AUDIêNCIA AVULSA') or (UpperCase(andamento) = 'AUDIÊNCIA AVULSA') or
+      (UpperCase(andamento) = 'INSTRUCAO') or (UpperCase(andamento) = 'AUDIENCIA AVULSA')) then
+      result := 'INSTRUCAO'
+   else
+   if (Pos('ÊXITO', UpperCase(andamento)) <> 0) or (Pos('EXITO', UpperCase(andamento)) <> 0) then
+      result := 'HONORARIOS DE EXITO'
+   else
+   if (UpperCase(andamento) = 'AVULSO') or
+      (UpperCase(andamento) = 'AVULSO CÍVEL (AUDITORIA)') or
+      (UpperCase(andamento) = 'AVULSO CIVEL (AUDITORIA)') or
+      (UpperCase(andamento) = 'AVULSO CIVEL') or
+      (UpperCase(andamento) = 'AVULSO CÍVEL') then
+      result := 'ASSESSORIA JURIDICA'
+   else
+   if (UpperCase(andamento) = 'AUDIêNCIA AVULSA') or
+      (UpperCase(andamento) = 'AUDIENCIA AVULSA') then
+      result := 'ACOMPANHAMENTO'
+   else
+   if (UpperCase(andamento) = 'HONORARIOS FINAIS') or
+      (UpperCase(andamento) = 'HONORÁRIOS FINAIS') then
+   begin
+      if (motivobaixa = 'ACORDO COM CUSTOS') or
+         (motivobaixa = 'IMPROCEDENCIA') or
+         (motivoBaixa = 'EXTINTO COM JULGAMENTO DE MERITO') then
+         result := 'HONORARIOS DE EXITO'
+      else
+         result := 'HONORARIOS FINAIS';
+   end
+   else
+   if (UpperCase(andamento) = 'HONORARIOS INICIAIS') or
+      (UpperCase(andamento) = 'HONORÁRIOS INICIAIS') then
+      result := 'HONORARIOS INICIAIS';
+end;
+
+function TfrmDigitaPlan.ConfereAtosDaNota(numeroNota: string; wintask: TWintask): integer;
+var
+   i, estagio,p, contador :integer;
+   arquivo : TstringList;
+   linha, linhaanterior, andamentoLocalizar, ultGcPj, gcpj, andamento, valorDigitado :string;
+   fim : boolean;
+   fName, gcpjValidado, andamentoValidado :string;
+   tries :integer;
+   data:TdateTime;
+   ultArquivo : string;
+label
+   mesmaLinha;
+
+   procedure RemoveAto(dts: TAdoDataset; tela, db: boolean);
+   begin
+      if tela then
+      begin
+         wintask.ClickHTMLElement(pageGcpj, 'INPUT RADIO[NAME= ''composicoesSelecs'',INDEX=''' + IntToStr(contador) + ''']');
+         Sleep(TIME_SLEEP_ZERO);
+
+         wintask.ClickHTMLElement(pageGcpj, 'INPUT SUBMIT[VALUE= ''excluir'']');
+         Sleep(TIME_SLEEP_MIN);
+      end;
+
+      if db then
+      begin
+         //marca como não digitado
+         dmHonorarios.adoCmd.CommandText := 'update tbplanilhasatos set fgdigitado=0, datahoradigitacao=null ' +
+                                            'where idescritorio = ' + dts.FieldByName('idescritorio').AsString + ' and ' +
+                                            'idplanilha = ' + dts.FieldByName('idplanilha').AsString + ' and ' +
+                                            'linhaplanilha = ' + dts.FieldByName('linhaplanilha').AsString + ' and ' +
+                                            'sequencia = ' + dts.FieldByName('sequencia').AsString;
+         dmHonorarios.adoCmd.Execute;
+      end;
+   end;
+begin
+   result := -1;
+
+
+   fname := '';
+
+   wintask.Click_Mouse(mainPage,591,234);
+   Sleep(500);
+
+   if Not wintask.EstaNaPagina_CopyText(mainPage, 'Tipo de Prestador:') then
+      exit;
+
+   //posiciona na primeirapágina da lista de atos
+   wintask.ClickHTMLElement(pageGcpj, 'IMG[SRC= ''http://www4.net.bradesco.com.br/i'']');
+   Sleep(TIME_SLEEP_MIN);
+
+   //localiza os atos marcados como digitados no banco de dados
+   dmHonorarios.dtsAtosDigitados.Close;
+   dmHonorarios.dtsAtosDigitados.CommandText := 'select * from tbplanilhasatos where numeronota = ' + DBGrid2.DataSource.DataSet.FieldByName('numeronota').AsString +
+                                                ' and fgdigitado = 1 ' +
+                                                'order by gcpj, valorCorrigido';
+   dmHonorarios.dtsAtosDigitados.Open;
+
+   if dmHonorarios.dtsAtosDigitados.RecordCount = 0 then
+   begin
+      //no banco de dados nenhum ato está marcado comodigitado.Exclui a nota doGCPJ
+      wintask.ClickHTMLElement(pageGcpj, 'INPUT SUBMIT[VALUE= ''voltar'']');
+      Sleep(TIME_SLEEP_MIN);
+
+      if not wintask.EstaNaPagina_CopyText(mainPage, 'Honorários em Cadastramento') then
+         exit;
+
+      if PosicionaNotaDigitando(false,DBGrid2.DataSource.DataSet.FieldByName('numeronota').AsString, true,wintask)<0 then
+         exit;
+      result := 1;
+      exit;
+   end;
+
+   fName := wintask.GetPagina_CopyText(mainPage, 'Tipo de Prestador: ');
+   if fName = '' then
+      exit;
+
+   //posiciona na tela do GCPJ
+   arquivo :=TstringList.Create;
+
+   i := 0;
+   linhaAnterior := '';
+   contador := 0;
+   fim := false;
+   gcpjValidado := '';
+   tries := 0;
+   ultArquivo := '';
+
+   dmHonorarios.dtsAtosDigitados.First;
+
+   try
+      while true do
+      begin
+         arquivo.Clear;
+
+         if ultArquivo = fName then
+         begin
+            MyDeleteFile(fName);
+            Result := ConfereAtosDaNota(numeroNota, wintask);
+            exit;
+         end;
+
+         arquivo.LoadFromFile(fname);
+         estagio := 0;
+
+         for i := 0 to arquivo.Count - 1 do
+         begin
+            if Trim(arquivo.strings[i]) = '' then
+               continue;
+
+            if estagio = 0 then
+            begin
+               if Pos('Processo Ato Data do Ato  Valor', arquivo.Strings[i]) = 0 then
+                  continue;
+               inc(estagio);
+               contador := 0;
+               if arquivo.Strings[i+1] = linhaanterior then   //acabaram as páginas
+               begin
+                  //tenta  mais uma vez
+                  inc(tries);
+                  if tries > 1 then
+                  begin
+                     fim:= true;
+                     break;
+                  end;
+
+                  fName := wintask.GetPagina_CopyText(mainPage, 'Tipo de Prestador: ');
+                  if fName = '' then
+                     exit;
+                  MyDeleteFile(fname);
+                  break;
+               end;
+               linhaanterior := arquivo.Strings[i+1];
+               continue;
+            end;
+
+         mesmaLinha:
+
+            linha := Trim(arquivo.strings[i]);
+            if (linha = '') or (Pos('/', linha)=0) then
+            begin
+               //clica para mover para a próxima janela
+               wintask.ClickHTMLElement(pageGcpj, 'IMG[SRC= ''http://www4.net.bradesco.com.br/imagens/setaTabelaD'']');
+
+               Sleep(TIME_SLEEP_MED);
+
+               estagio := 0;
+               break;
+            end;
+
+            //achou a linha. Separa os dados GCPJ / Valor / Tipo andamento
+            Inc(contador);
+
+            //se acabou o banco de dados e ainda temna tela é para excluir
+            if dmHonorarios.dtsAtosDigitados.Eof then
+            begin
+               RemoveAto(dmHonorarios.dtsAtosDigitados, true, false);
+               continue;
+            end;
+
+            p := Pos(' ', linha);
+            if p = 0 then
+               continue;
+
+            gcpj := Trim(Copy(linha, 1, p-1));
+            linha:= Trim(Copy(linha,p+1, length(linha)));
+
+            p := Pos('/', linha);
+            if p = 0 then
+               continue;
+
+            andamento := Trim(Copy(linha, 1, p-3));
+            linha := Trim(Copy(linha, p+1, length(linha)));
+
+            p := Pos(FormatDateTime('/yyyy', Date), linha);
+            if p = 0 then
+            begin
+               p := Pos('/' + InttoStr(YearOf(date)-1), linha);
+               if p = 0 then
+                  continue;
+            end;
+
+            valorDigitado := Trim(Copy(linha, p+5, length(linha)));
+            p := Pos(' ', valorDigitado);
+            if p = 0 then
+               continue;
+
+            valorDigitado := Trim(copy(valordigitado, 1, p-1));
+
+            //verifica contra o banco de dados
+            andamentoLocalizar := ObtemTipoAndamento(dmHonorarios.dtsAtosDigitados.FieldByName('tipoandamento').AsString, '', '');
+
+            if dmHonorarios.dtsAtosDigitados.FieldByName('gcpj').AsInteger = StrToInt(gcpj) then //eh omesmo gcpj
+            begin
+               //é o mesmo tipo de andamento?
+               if andamentoLocalizar = andamento then
+               begin
+                  //o valor está correto?
+                  if FormatFloat('#,##0.00', dmHonorarios.dtsAtosDigitados.FieldByName('valorcorrigido').AsFloat) = valorDigitado then //está OK
+                  begin
+                     //posiciona no próximo registro do banco de dados
+                     dmHonorarios.dtsAtosDigitados.Next;
+                     continue;
+                  end;
+                  //o valor é diferente. Altera no GCPJ
+                  RemoveAto(dmHonorarios.dtsAtosDigitados, true, true);
+                  MyDeleteFile(fName);
+                  result := ConfereAtosDaNota(numeroNota, wintask);
+                  exit;
+               end;
+
+               //andamento diferente. Será que a nota tem duplicado?
+               dmHonorarios.dts.Close;
+               dmHonorarios.dts.CommandText := 'select * from tbplanilhasatos where numeronota = ' + DBGrid2.DataSource.DataSet.FieldByName('numeronota').AsString +
+                                               ' and gcpj = ' + gcpj + ' and linhaPlanilha <> ' + dmHonorarios.dtsAtosDigitados.FieldByName('linhaplanilha').AsString;
+               dmHonorarios.dts.Open;
+               if dmHonorarios.dts.Eof then //não encontrou. Exclui do GCPJ
+               begin
+                  MyDeleteFile(fName);
+                  RemoveAto(dmHonorarios.dtsAtosDigitados, true, false);
+                  result := ConfereAtosDaNota(numeroNota, wintask);
+                  exit;
+               end;
+
+               //achou.
+               dmHonorarios.dts.Tag := 0;
+               while Not dmHonorarios.dts.Eof do
+               begin
+                  Application.ProcessMessages;
+
+                  andamentoLocalizar := ObtemTipoAndamento(dmHonorarios.dts.FieldByName('tipoandamento').AsString, '', '');
+                  if andamentoLocalizar = andamento then
+                  begin
+                     if FormatFloat('#,##0.00', dmHonorarios.dts.FieldByName('valorcorrigido').AsFloat) = valorDigitado then //está OK
+                     begin
+                        //posiciona no próximo registro do banco de dados
+                        //consta como digitado no banco de dados?
+                        if dmHonorarios.dts.FieldByName('fgdigitado').AsInteger = 0 then
+                        begin
+                           dmHonorarios.adoCmd.CommandText := 'update tbplanilhasatos set fgdigitado=1, datahoradigitacao=:data ' +
+                                                              'where idescritorio = ' + dmHonorarios.dts.FieldByName('idescritorio').AsString + ' and ' +
+                                                              'idplanilha = ' + dmHonorarios.dts.FieldByName('idplanilha').AsString + ' and ' +
+                                                              'linhaplanilha = ' + dmHonorarios.dts.FieldByName('linhaplanilha').AsString + ' and ' +
+                                                              'sequencia = ' + dmHonorarios.dts.FieldByName('sequencia').AsString;
+                           dmHonorarios.adoCmd.Parameters.ParamByName('data').Value := now;
+                           dmHonorarios.adoCmd.Execute;
+                           MyDeleteFile(fName);
+                           result := ConfereAtosDaNota(numeroNota, wintask);
+                           exit;
+                        end
+                        else
+                        begin
+                           gcpjValidado := gcpj;
+                           andamentoValidado := andamentoLocalizar;
+
+                           dmHonorarios.dts.tag := 1;
+                           dmHonorarios.dtsAtosDigitados.Next;
+                           break;
+                        end;
+                     end;
+                     //remove
+                     RemoveAto(dmHonorarios.dts, true, true);
+                     MyDeleteFile(fName);
+                     result := ConfereAtosDaNota(numeroNota, wintask);
+                     exit;
+                  end;
+                  //verifica o proximo
+                  dmHonorarios.dts.Next;
+               end;
+
+               if dmHonorarios.dts.Tag = 1 then
+                  continue;
+
+               MyDeleteFile(fName);
+               RemoveAto(dmHonorarios.dtsAtosDigitados, true, false);
+               result := ConfereAtosDaNota(numeroNota, wintask);
+               exit;
+            end;
+
+            if dmHonorarios.dtsAtosDigitados.FieldByName('gcpj').AsInteger > StrToInt(gcpj) then
+            begin
+               if gcpj = gcpjValidado then
+               begin
+                  if andamentoValidado = andamento then
+                     continue;
+                  MyDeleteFile(fName);
+                  RemoveAto(dmHonorarios.dtsAtosDigitados, true, false);
+                  result := ConfereAtosDaNota(numeroNota, wintask);
+                  exit;
+               end
+               else
+               begin
+                     //gcpj do banco de dados é maior que a tela. Remove do
+                  MyDeleteFile(fName);
+                  RemoveAto(dmHonorarios.dtsAtosDigitados, true, false);
+                  result := ConfereAtosDaNota(numeroNota, wintask);
+                  exit;
+               end;
+            end;
+            //verifica dupliocados
+            if gcpjValidado = dmHonorarios.dtsAtosDigitados.FieldByName('gcpj').AsString then
+            begin
+               if andamentoLocalizar = andamentoValidado then
+               begin
+                  //andamento diferente. Será que a nota tem duplicado?
+                  dmHonorarios.dts.Close;
+                  dmHonorarios.dts.CommandText := 'select * from tbplanilhasatos where numeronota = ' + DBGrid2.DataSource.DataSet.FieldByName('numeronota').AsString +
+                                                  ' and gcpj = ' + gcpjValidado + ' and linhaPlanilha <> ' + dmHonorarios.dtsAtosDigitados.FieldByName('linhaplanilha').AsString;
+                  dmHonorarios.dts.Open;
+                  if dmHonorarios.dts.Eof then //não encontrou. Exclui do GCPJ
+                     exit;
+
+                  if dmHonorarios.dts.FieldByName('fgdigitado').AsInteger = 0 then
+                  begin
+                     dmHonorarios.dtsAtosDigitados.Next;
+                     goto mesmaLinha;
+                  end;
+                  MyDeleteFile(fName);
+                  RemoveAto(dmHonorarios.dts, false, true);
+                  result := ConfereAtosDaNota(numeroNota, wintask);
+                  exit;
+               end
+               else
+               begin
+                  MyDeleteFile(fName);
+                  RemoveAto(dmHonorarios.dtsAtosDigitados, false, true);
+                  result := ConfereAtosDaNota(numeroNota, wintask);
+                  exit;
+               end;
+            end
+            else
+            begin
+               MyDeleteFile(fName);
+               RemoveAto(dmHonorarios.dtsAtosDigitados, false, true);
+               result := ConfereAtosDaNota(numeroNota, wintask);
+               exit;
+            end;
+         end;
+         if Not Fim then
+         begin
+            fName := wintask.GetPagina_CopyText(mainPage, 'Tipo de Prestador: ');
+            if fName = '' then
+               exit;
+
+            continue;
+         end;
+
+         //se sobrou bancode dados exclui
+         if Not dmHonorarios.dtsAtosDigitados.Eof then
+            result := -1
+         else
+            result :=1;
+         exit;
+      end;
+   finally
+      MyDeleteFile(fname);
+      arquivo.free;
+   end;
+end;
+
+
+function TfrmDigitaPlan.PosicionaNotaDigitando(notificar: boolean; nota: string; excluir: boolean;wintask: twintask):integer;
+var
+   i, estagio, index, p : integer;
+   clicou : boolean;
+   posicionarPagUm : boolean;
+   primeiraNota, fname, numeronota : string;
+   arquivo : TStringList;
+   primeiralinha : integer;
+   popup, valor : string;
+
+begin
+   result := -1;
+   primeiraNota := '';
+   clicou := false;
+
+   wintask.Click_Mouse(mainPage, 591,234);
+
+   posicionarPagUm := true;
+
+   //localizar a tela da nota
+   while true do
+   begin
+      fName := wintask.GetPagina_CopyText(mainPage,
+                                          'Honorários em Cadastramento');
+      if fName <> '' then //esta na pagina principal
+      begin
+         if posicionarPagUm then
+         begin
+            //ja esta na pagina 1?
+            arquivo:= TStringList.Create;
+            try
+               arquivo.LoadFromFile(fName);
+               for i := 0 to arquivo.count - 1 do
+               begin
+                  if Pos('[1]', arquivo.strings[i])<> 0 then
+                  begin
+                     posicionarPagUm := false;
+                     break;
+                  end;
+               end;
+            finally
+               arquivo.Free;
+            end;
+
+            if posicionarPagUm then
+            begin
+               wintask.ClickHTMLElement(pageGcpj, 'IMG[SRC= ''http://www4.net.brad'']');
+               Sleep(TIME_SLEEP_ZERO);
+               posicionarPagUm := false;
+
+               MyDeleteFile(fName);
+
+               fName := wintask.GetPagina_CopyText(mainPage, 'Honorários em Cadastramento');
+
+            end;
+         end;
+
+         estagio := 0;
+         index := 1;
+
+         arquivo := TStringList.Create;
+         try
+            arquivo.LoadFromFile(fname);
+            for i := 0 to arquivo.count - 1 do
+            begin
+               case estagio of
+                  0 : begin
+                     if Pos('Empresa Prestador de Serviço', arquivo.strings[i]) <> 0 then
+                     begin
+                        inc(estagio);
+
+                        primeiralinha := i+1;
+                     end;
+                  end;
+                  1 : begin
+                     p:= Pos('NOTA FISCAL', arquivo.strings[i]);
+                     if p <> 0 then
+                     begin
+                        numeronota := Trim(Copy(arquivo.strings[i], p+11, Length(arquivo.strings[i])));
+                        p := Pos(' ', numeroNota);
+                        if p <> 0 then
+                           numeroNota := Trim(Copy(numeroNota, 1, p-1));
+                     end;
+
+                     if clicou then
+                     begin
+                        if numeronota = primeiraNota then // não achou
+                        begin
+                           planJbm.NotificaErro('Erro localizando a nota: ' + nota);
+                           if notificar then
+                              ShowMessage('Erro localizando a nota: ' + nota);
+                           exit;
+                        end;
+                        clicou:= false;
+                     end;
+
+                     if nota = numeroNota then //achou
+                     begin
+                        Sleep(TIME_SLEEP_Med);
+
+                        wintask.ClickHTMLElement(pageGcpj, 'INPUT RADIO[NAME= ''selecionado'',INDEX=''' + IntToStr(index) + ''']');
+                        Sleep(TIME_SLEEP_MIN);
+
+                        if Not excluir then
+                        begin
+                           wintask.ClickHTMLElement(pageGcpj, 'INPUT SUBMIT[VALUE= ''alterar'']');
+                           Sleep(10000);
+                        end
+                        else
+                        begin
+                           wintask.ClickHTMLElement(pageGcpj, 'INPUT SUBMIT[VALUE= ''excluir'']');
+                           Sleep(TIME_SLEEP_MED);
+                        end;
+
+                        popup := 'IEXPLORE.EXE|Static|Selecione um dos itens da grid';
+
+                        if wintask.Verifica_Janela_PopUp(popup, valor) = 1 then
+                        begin
+                           if wintask.ie8 then
+                              wintask.Click_Button('IEXPLORE.EXE|#32770|Mensagem da página da web','OK')
+                           else
+                              wintask.Click_Button('IEXPLORE.EXE|#32770|Windows Internet Explorer', 'OK');
+
+                           Sleep(TIME_SLEEP_MIN);
+
+                           wintask.ClickHTMLElement(pageGcpj, 'INPUT RADIO[NAME= ''selecionado'',INDEX=''' + IntToStr(index) + ''']');
+                           Sleep(TIME_SLEEP_MIN);
+
+                           if Not excluir then
+                           begin
+                              wintask.ClickHTMLElement(pageGcpj, 'INPUT SUBMIT[VALUE= ''alterar'']');
+                              Sleep(10000);
+                           end
+                           else
+                           begin
+                              wintask.ClickHTMLElement(pageGcpj, 'INPUT SUBMIT[VALUE= ''excluir'']');
+                              Sleep(TIME_SLEEP_MED);
+                           end;
+                        end;
+
+                        break;
+                     end;
+                     Inc(index)
+                  end;
+               end;
+            end;
+
+            if i <= (arquivo.Count - 1) then
+               break;
+
+            //guarda a primeira nota da página
+
+            p := Pos('NOTA FISCAL', arquivo.strings[primeiraLinha]);
+            primeiraNota := Trim(Copy(arquivo.strings[primeiraLinha], p+11, Length(arquivo.strings[primeiraLinha])));
+            p := Pos(' ', primeiraNota);
+            if p <> 0 then
+               primeiraNota := Trim(Copy(primeiraNota, 1, p-1));
+
+            wintask.ClickHTMLElement(pageGcpj, 'IMG[SRC= ''http://www4.net.bradesco.com.br/imagens/setaTabelaD'']');
+            Sleep(TIME_SLEEP_MED);
+
+            clicou := true;
+
+         finally
+            arquivo.free;
+            MyDeleteFile(fName);
+         end;
+      end
+      else
+      begin
+         if Not  wintask.EstaNaPagina_CopyText(mainPage,
+                                               'Tipo de Prestador:') then
+         begin
+            wintask.ClickHTMLElement(pageGcpj, 'INPUT SUBMIT[VALUE= ''voltar'']');
+            sleep(TIME_SLEEP_MIN);
+
+            Result := PosicionaNotaDigitando(notificar, nota, excluir, wintask);
+            exit;
+         end
+         else
+         begin
+            wintask.ClickHTMLElement(pageGcpj, 'INPUT SUBMIT[VALUE= ''voltar'']');
+            sleep(TIME_SLEEP_MIN);
+            Result := PosicionaNotaDigitando(notificar, nota, excluir, wintask);
+            exit;
+         end;
+      end;
+   end;
+   result := 1;
+end;
+
+procedure TfrmDigitaPlan.ConferirAtosdaNotaComoGCPJ1Click(Sender: TObject);
+var
+   wintask : TWintask;
+   ret: integer;
+begin
+   wintask := TWintask.Create('c:\Arquivos de programas\WinTask\bin\TaskExec.exe',
+                              'Q:\Publico\Backup_sistemas\Compartilhado\Honorarios_Programa\presenta\rob\',
+                              '');
+
+   try
+      wintask.ie8 := ie8;
+      wintask.ff := ff;
+
+      wintask.FecharTodos('TaskExec.exe');
+      wintask.FecharTodos('TaskLock.exe');
+      wintask.FecharTodos('Tasksync.exe');
+
+      if PosicionaNotaDigitando(false,DBGrid2.DataSource.DataSet.FieldByName('numeronota').AsString, false,wintask)<0 then
+         exit;
+
+      ret := ConfereAtosDaNota(DBGrid2.DataSource.DataSet.FieldByName('numeronota').asString, wintask);
+      if ret = 1 then
+         ShowMessage('Nota validada com sucesso')
+      else
+         ShowMessage('Erro na validação da nota');
+   finally
+      wintask.free;
+   end;
+end;
+
+procedure TfrmDigitaPlan.MyDeleteFile(nome: string);
+begin
+   try
+      DeleteFile(nome);
+   except
+   end;
+end;
+
+procedure TfrmDigitaPlan.NovaRotinaDigitacaoNotas(notaRetornar: string);
+var
+   wintask :  TWintask;
+   ultdocumento : string;
+   fName : string;
+   valor, valDigitar : string;
+   digitando : boolean;
+   i, estagio, index, p, k : integer;
+   arquivo : TStringList;
+   destinatarioOk : boolean;
+//   nota : string;
+   passagem : integer;
+   totaldigitado, novototaldigitado, antigoTotalDigitado: double;
+   dataDigitar : string;
+   popup : string;
+   numeronota : string;
+   bMark : TBookmarkList;
+   fhandle :integer;
+   ret : integer;
+   andamentoDigitar : string;
+   busy : WordBool;
+
+   label
+      proximo;
+
+   function TemDestinatario : boolean;
+   var
+      i,p : integer;
+      arquivo : TStringlist;
+      codigo : string;
+   begin
+      result := false;
+      arquivo := TStringList.Create;
+      try
+         arquivo.LoadFromFile(fname);
+
+         for i := 0 to arquivo.count - 1 do
+         begin
+            p :=  pos('despesaHonorariosProcessoVO.composicaoDespHonorariosVO.dependenciaBradescoOnLineVO.cdDestinatario" maxlength="5" size="5" value="', arquivo.strings[i]);
+            if p = 0 then
+               continue;
+            codigo := Copy(arquivo.strings[i], p+129, length(arquivo.strings[i]));
+            p := Pos('" onkeydown="', codigo);
+            if p = 0 then
+               exit;
+
+            codigo := Trim(Copy(codigo, 1, p-1));
+            if codigo <> '' then
+               result := true;
+            exit;
+         end;
+      finally
+         arquivo.free;
+      end;
+   end;
+
+   function ObtemDependenciaDigitar:string;
+   var
+      i,p : integer;
+      arquivo : TStringlist;
+      estagio : integer;
+      codigo, nome : string;
+      valstr : string;
+      dependencia : string;
+      primeira : boolean;
+      sequencia : integer;
+   begin
+      result := '';
+      codigo := '';
+      nome:= '';
+      planJbm.ObtemReclamadasDoProcesso;
+      sequencia := 1;
+
+      while Not planJbm.dtsReclamadas.Eof do
+      begin
+         if planJbm.dtsReclamadas.FieldByName('sequenciagcpj').AsInteger = sequencia then //guarda a primeira por seguranca
+         begin
+            if planJbm.dtsReclamadas.FieldByName('codigoreclamada').AsInteger <> 0 then
+            begin
+               codigo := planJbm.dtsReclamadas.FieldByName('codigoreclamada').AsString;
+               nome := planJbm.dtsReclamadas.FieldByName('nomereclamada').AsString;
+            end
+            else
+            begin
+               Inc(sequencia);
+               planJbm.dtsReclamadas.Next;
+               continue;
+            end;
+         end;
+
+         //é bradesco?
+         if planJbm.dtsAtos.FieldByName('empresaligadaagrupar').AsInteger = 237 then //procura uma agencia
+         begin
+            if planJbm.dtsReclamadas.FieldByName('codempresa').AsInteger = planJbm.dtsAtos.FieldByName('empresaligadaagrupar').AsInteger then
+            begin
+               if planJbm.dtsReclamadas.FieldByName('tiporeclamada').AsString = 'A' then //agencia
+               begin
+                  codigo := planJbm.dtsReclamadas.FieldByName('codigoreclamada').AsString;
+                  nome := planJbm.dtsReclamadas.FieldByName('nomereclamada').AsString;
+                  break;
+               end;
+            end;
+         end
+         else
+         begin
+            if (planJbm.dtsReclamadas.FieldByName('codigoreclamada').AsInteger = 4001) and (planJbm.dtsAtos.FieldByName('empresaligadaagrupar').AsInteger = 5172) then
+            begin
+               codigo := planJbm.dtsReclamadas.FieldByName('codigoreclamada').AsString;
+               nome := planJbm.dtsReclamadas.FieldByName('nomereclamada').AsString;
+               break;
+            end
+            else
+            if (planJbm.dtsReclamadas.FieldByName('codigoreclamada').AsInteger = planJbm.dtsAtos.FieldByName('empresaligadaagrupar').AsInteger) or
+               (planJbm.dtsReclamadas.FieldByName('codigoreclamada').AsInteger = planJbm.dtsAtos.FieldByName('codempresaligada').AsInteger) then
+            begin
+               if planJbm.dtsReclamadas.FieldByName('tiporeclamada').AsString <> 'A' then //não pode ser agencia
+               begin
+                  codigo := planJbm.dtsReclamadas.FieldByName('codigoreclamada').AsString;
+                  nome := planJbm.dtsReclamadas.FieldByName('nomereclamada').AsString;
+                  break;
+               end;
+            end;
+         end;
+         planJbm.dtsReclamadas.Next;
+      end;
+
+      if (codigo = '0') or (codigo = '') then
+         primeira := true
+      else
+         primeira := false;
+
+      arquivo := TStringList.Create;
+      try
+         arquivo.LoadFromFile(fname);
+
+         while true do
+         begin
+            estagio := 0;
+            dependencia := '';
+
+            for i := 0 to arquivo.count - 1 do
+            begin
+               case estagio of
+                  0 : begin
+                     if pos('<select name="selDependencia"', arquivo.strings[i]) = 0 then
+                        continue;
+                     Inc(estagio);
+                  end;
+                  1 : begin
+                     p := Pos('<option value="', arquivo.strings[i]);
+                     if p = 0 then
+                        break;;
+
+                     valstr := trim(Copy(arquivo.strings[i], p+15, length(arquivo.strings[i])));
+                     p := Pos('">', valstr);
+                     if p = 0 then
+                        exit;
+
+                     if Not primeira then
+                     begin
+                        if RemoveNaoNumericos(Trim(copy(valstr, 1, p-1))) <> codigo then
+                           continue;
+                     end;
+
+                     valStr := Trim(Copy(valStr, p+2, length(valstr)));
+                     p := pos('</option>', valStr);
+                     if p = 0 then
+                     begin
+                        result := '';
+                        exit;
+                     end;
+
+                     valStr := Copy(valStr, 1, p-1);
+                     if valStr = '' then
+                        ShowMessage('Erro valor');
+
+                     p := Pos('&#39;', valStr);
+                     if p <> 0 then
+                        valstr := copy(valstr, 1, p-1) + '''' + copy(valstr, p+5, length(valstr));
+
+                     Result := valstr;
+                     exit;
+                  end;
+               end;
+            end;
+            //nao achou
+            if primeira then
+            begin
+               Result := nome;
+               exit;
+            end;
+            primeira := true;
+         end;
+      finally
+         arquivo.free;
+      end;
+   end;
+
+   function ObtemTotalDigitado:double;
+   var
+      i, p, passagem : integer;
+   begin
+      result := 0;
+      passagem := 1;
+
+      Sleep(800);
+
+      while passagem <= 3 do
+      begin
+         wintask.Click_Mouse(mainPage,591,234);
+         Sleep(500);
+
+         fName := wintask.GetPagina_CopyText(mainPage,
+                                                'Tipo de Prestador: ');
+         if fName = '' then
+         begin
+            Inc(passagem);
+            Sleep(800);
+            continue;
+         end;
+
+         //esta na pagina principal
+         arquivo := TStringList.Create;
+         try
+            arquivo.LoadFromFile(fname);
+            for i := 0 to arquivo.count - 1 do
+            begin
+               p := Pos('Total: ', arquivo.strings[i]);
+               if p = 0 then
+                  continue;
+
+               valor := Trim(Copy(arquivo.strings[i], p+7, length(arquivo.Strings[i])));
+               RemoveEsteCaracter('.', valor);
+               RemoveEsteCaracter(' ', valor);
+
+               if valor = '' then
+                  result := 0
+               else
+                  result := StrToFloat(valor);
+               exit;
+            end;
+         finally
+            arquivo.free;
+            MyDeleteFile(fName);
+         end;
+      end;
+   end;
+
+
+   function VerificaTela(comThread: boolean):integer;
+   begin
+      result := -1;
+
+      if comThread then
+      begin
+//         winThread:= TClickOkThread.Create;
+//         winThread.Resume;
+      end;
+
+      try
+        popup := 'IEXPLORE.EXE|Static|CODIGO PRESTADOR INVALIDO';
+
+        if wintask.Verifica_Janela_PopUp(popup, valor) = 1 then
+        begin
+           if ie8 then
+              wintask.Click_Button('IEXPLORE.EXE|#32770|Mensagem da página da web','OK')
+           else
+              wintask.Click_Button('IEXPLORE.EXE|#32770|Windows Internet Explorer', 'OK');
+
+            Sleep(TIME_SLEEP_ZERO);
+
+            result :=1;
+            exit;
+         end;
+
+         Sleep(200);
+        popup := 'TASKEXEC.EXE|Static|Error at line';
+
+        if wintask.Verifica_Janela_PopUp(popup, valor) = 1 then
+        begin
+           if ie8 then
+              wintask.Click_Button('IEXPLORE.EXE|#32770|Mensagem da página da web','OK')
+           else
+              wintask.Click_Button('IEXPLORE.EXE|#32770|Windows Internet Explorer', 'OK');
+
+            Sleep(TIME_SLEEP_ZERO);
+
+            result :=1;
+            exit;
+         end;
+
+         Sleep(200);
+         popup := 'IEXPLORE.EXE|Static|CODIGO DO TIPO DOCUMENTO HONORARIOS INVALIDO';
+
+         if wintask.Verifica_Janela_PopUp(popup, valor) = 1 then
+         begin
+            if ie8 then
+               wintask.Click_Button('IEXPLORE.EXE|#32770|Mensagem da página da web','OK')
+            else
+               wintask.Click_Button('IEXPLORE.EXE|#32770|Windows Internet Explorer', 'OK');
+            Sleep(TIME_SLEEP_ZERO);
+
+            result :=1;
+            exit;
+         end;
+
+         Sleep(200);
+         popup := 'IEXPLORE.EXE|Static|Pressione a lupa para realizar a pesquisa';
+         if wintask.Verifica_Janela_PopUp(popup, valor) = 1 then
+         begin
+            if ie8 then
+               wintask.Click_Button('IEXPLORE.EXE|#32770|Mensagem da página da web','OK')
+            else
+               wintask.Click_Button('IEXPLORE.EXE|#32770|Windows Internet Explorer', 'OK');
+            Sleep(TIME_SLEEP_ZERO);
+
+            result :=1;
+            exit;
+         end;
+
+         Sleep(200);
+         popup := 'IEXPLORE.EXE|Static|DATA DO ATO INVALIDO';
+
+         if wintask.Verifica_Janela_PopUp(popup, valor) = 1 then
+         begin
+            if ie8 then
+               wintask.Click_Button('IEXPLORE.EXE|#32770|Mensagem da página da web','OK')
+            else
+               wintask.Click_Button('IEXPLORE.EXE|#32770|Windows Internet Explorer', 'OK');
+            Sleep(TIME_SLEEP_ZERO);
+
+            result :=1;
+            exit;
+         end;
+
+         Sleep(200);
+         if ie8 then
+            popUp := 'IEXPLORE.EXE|Static|O campo Valor do Ato é obrigatório'
+         else
+            popUp := 'IEXPLORE.EXE|Static|O campo Valor do Ato é obrigatório';
+
+         if wintask.Verifica_Janela_PopUp(popup, valor) = 1 then
+         begin
+            if ie8 then
+               wintask.Click_Button('IEXPLORE.EXE|#32770|Mensagem da página da web','OK')
+            else
+               wintask.Click_Button('IEXPLORE.EXE|#32770|Windows Internet Explorer', 'OK');
+
+            result := 0;
+            exit;
+         end;
+
+         Sleep(200);
+         if ie8 then
+            popup := 'IEXPLORE.EXE|Static|O campo Data do Ato é obrigatório'
+         else
+            popup := 'IEXPLORE.EXE|Static|O campo Data do Ato é obrigatório';
+
+         if wintask.Verifica_Janela_PopUp(popup, valor, false) = 1 then
+         begin
+            if ie8 then
+               wintask.Click_Button('IEXPLORE.EXE|#32770|Mensagem da página da web','OK')
+            else
+               wintask.Click_Button('IEXPLORE.EXE|#32770|Windows Internet Explorer', 'OK');
+                             Sleep(TIME_SLEEP_ZERO);
+            result := 0;
+            exit;
+         end;
+
+         Sleep(200);
+         popUp := 'IEXPLORE.EXE|Static|O campo Data do Documento é obrigatório';
+         if wintask.Verifica_Janela_PopUp(popup, valor) = 1 then
+         begin
+            if wintask.ie8 then
+               wintask.Click_Button('IEXPLORE.EXE|#32770|Mensagem da página da web','OK')
+            else
+               wintask.Click_Button('IEXPLORE.EXE|#32770|Windows Internet Explorer', 'OK');
+            result := 1;
+            exit;
+         end;
+
+         Sleep(200);
+         popUp := 'IEXPLORE.EXE|Static|O campo Nº do Processo Bradesco é obrigatório';
+         if wintask.Verifica_Janela_PopUp(popup, valor) = 1 then
+         begin
+            if wintask.ie8 then
+               wintask.Click_Button('IEXPLORE.EXE|#32770|Mensagem da página da web','OK')
+            else
+               wintask.Click_Button('IEXPLORE.EXE|#32770|Windows Internet Explorer', 'OK');
+            result := 1;
+            exit;
+         end;
+
+         Sleep(200);
+         if ie8 then
+            popUp := 'IEXPLORE.EXE|Static|O campo Código do Destinatário é obrigatório.'
+         else
+            popUp := 'IEXPLORE.EXE|Static|O campo Código do Destinatário é obrigatório.';
+
+         if wintask.Verifica_Janela_PopUp(popup, valor) = 1 then
+         begin
+            if ie8 then
+               wintask.Click_Button('IEXPLORE.EXE|#32770|Mensagem da página da web','OK')
+            else
+               wintask.Click_Button('IEXPLORE.EXE|#32770|Windows Internet Explorer', 'OK');
+
+            result := 0;
+            exit;
+         end;
+
+         Sleep(200);
+         if ie8 then
+            popup := 'IEXPLORE.EXE|Static|O campo Dependência é obrigatório'
+         else
+            popup := 'IEXPLORE.EXE|Static|O campo Dependência é obrigatório';
+
+         if wintask.Verifica_Janela_PopUp(popup, valor) = 1 then
+         begin
+            if ie8 then
+               wintask.Click_Button('IEXPLORE.EXE|#32770|Mensagem da página da web','OK')
+            else
+               wintask.Click_Button('IEXPLORE.EXE|#32770|Windows Internet Explorer', 'OK');
+
+            result := 0;
+            exit;
+         end;
+
+         Sleep(200);
+         if ie8 then
+            popup := 'IEXPLORE.EXE|Static|O campo Ato é obrigatório'
+         else
+            popup := 'IEXPLORE.EXE|Static|O campo Ato é obrigatório';
+
+         if wintask.Verifica_Janela_PopUp(popup, valor) = 1 then
+         begin
+            if ie8 then
+               wintask.Click_Button('IEXPLORE.EXE|#32770|Mensagem da página da web','OK')
+            else
+               wintask.Click_Button('IEXPLORE.EXE|#32770|Windows Internet Explorer', 'OK');
+
+            result := 0;
+            exit;
+         end;
+
+         Sleep(200);
+         if ie8 then
+            popup := 'IEXPLORE.EXE|Static|Esta dependência foi encerrada, deseja alterá-la para'
+         else
+            popup := 'IEXPLORE.EXE|Static|Esta dependência foi encerrada, deseja alterá-la para';
+
+         if wintask.Verifica_Janela_PopUp(popup, valor) = 1 then
+         begin
+            wintask.Click_Button('IEXPLORE.EXE|#32770|Windows Internet Explorer', 'OK');
+            result := 0;
+            exit;
+         end;
+
+
+         Sleep(200);
+         popup := 'IEXPLORE.EXE|Static|VALOR DO DOCUMENTO DEVE SER IGUAL A SOMATORIA DOS ATOS';
+         if wintask.Verifica_Janela_PopUp(popup, valor) = 1 then
+         begin
+            wintask.Click_Button('IEXPLORE.EXE|#32770|Windows Internet Explorer','OK');
+            result := 0;
+            exit;
+         end;
+
+         Sleep(200);
+         popup := 'IEXPLORE.EXE|Internet Explorer_Server|ERRO! - Windows Internet Explorer';
+
+         if wintask.Verifica_Janela_PopUp(popup, valor) = 1 then
+         begin
+            result := -2;
+            exit;
+         end;
+
+         result := 1;
+         exit;
+      finally
+         try
+            if comThread then
+               winThread.pleaseClose:=true;
+         except
+         end;
+      end;
+
+
+//                     planJbm.NotificaErro('Valores digitados não conferem');
+//                     ShowMessage('Valores digitados não conferem');
+//                     exit;
+//                  end;
+   end;
+
+   procedure ExcluiDoGcpj(contador:integer);
+   begin
+      //exclui o ato do GCPJ
+      wintask.ClickHTMLElement(pageGcpj, 'INPUT RADIO[NAME= ''composicoesSelecs'',INDEX=''' + IntToStr(contador) + ''']');
+      Sleep(TIME_SLEEP_ZERO);
+
+      wintask.ClickHTMLElement(pageGcpj, 'INPUT SUBMIT[VALUE= ''excluir'']');
+      Sleep(TIME_SLEEP_MED);
+
+      wintask.ClickHTMLElement(pageGcpj, 'INPUT SUBMIT[VALUE= ''voltar'']');
+      sleep(TIME_SLEEP_MED);
+   end;
+
+
+begin
+   re.lines.Clear;
+
+   if FormatDateTime('hh:nn', Now) > '22:00' then
+      exit;
+
+   planJbm.idEscritorio := planJbm.dtsPlanilha.FieldByName('idescritorio').AsInteger;
+   planJbm.idplanilha := planJbm.dtsPlanilha.FieldByName('idplanilha').AsInteger;
+   planJbm.sequencia :=  planJbm.dtsPlanilha.FieldByName('sequencia').AsInteger;
+   planJbm.anomesreferencia := planJbm.dtsPlanilha.FieldByName('anomesreferencia').AsString;
+   planJbm.cnpjescritorio := planJbm.dtsPlanilha.FieldByName('cnpjescritorio').AsString;
+   planJbm.nomeescritorio := planJbm.dtsPlanilha.FieldByName('nomeescritorio').AsString;
+   planJbm.nomedigitar := planJbm.dtsPlanilha.FieldByName('nomedigitar').AsString;
+
+   dataDigitar := planJbm.ObtemDataDigitar;
+   if dataDigitar = '' then
+   begin
+      if MessageDlg('Não encontrada a data inicial para o ano/mês de referência. Deseja cadastrar?', mtConfirmation, mbYesNoCancel, 0) <> mrYes then
+      begin
+         planJbm.NotificaErro('Sistema não pode digitar para o mês ' + planJbm.anomesreferencia + ' até ser cadastrada a data inicial');
+         ShowMessage('Sistema não pode digitar para o mês ' + planJbm.anomesreferencia + ' até ser cadastrada a data inicial');
+         exit;
+      end;
+
+      frmCadDataInicial := TfrmCadDataInicial.Create(nil);
+      try
+         if frmCadDataInicial.ShowModal <> mrOk then
+            exit;
+
+         planJbm.CadastraDataInicial(frmCadDataInicial.dataInicial.date);
+      finally
+         frmCadDataInicial.Free;
+      end;
+      dataDigitar := planJbm.ObtemDataDigitar;
+   end;
+
+   dbGrid2.DataSource.DataSet.DisableControls;
+   try
+      if dbGrid2.SelectedRows.Count = 0 then //nehujm marcado. Marca todos
+      begin
+         //ainda tem registro?
+         if DBGrid2.DataSource.DataSet.RecordCount = 0 then
+         begin
+            planJbm.MarcaPlanilhaFinalizada;
+            planjbm.dtsPlanilha.Close;
+            planjbm.dtsPlanilha.Open;
+            exit;
+         end;
+         SelecionaTodaLista;
+      end;
+
+      bMark := dbGrid2.SelectedRows;
+
+      for k := 0 to bMark.Count - 1 do
+      begin
+         wintask := TWintask.Create('c:\Arquivos de programas\WinTask\bin\TaskExec.exe',
+                                    'Q:\Publico\Backup_sistemas\Compartilhado\Honorarios_Programa\presenta\rob\',
+                                    '');
+
+         try
+            wintask.ie8 := ie8;
+            wintask.ff := ff;
+
+            wintask.FecharTodos('TaskExec.exe');
+            wintask.FecharTodos('TaskLock.exe');
+            wintask.FecharTodos('Tasksync.exe');
+
+            if FileExists(ExtractFilePath(Application.ExeName) + 'ENCERRAR.TXT') then
+            begin
+               RenameFile(ExtractFilePath(Application.ExeName) + 'ENCERRAR.TXT', ExtractFilePath(Application.ExeName) + 'ENCERRAR.OK');
+               exit;
+            end;
+
+            dbGrid2.DataSource.DataSet.BookMark := bMark.items[k];
+
+            digitando := false;
+            ultdocumento := '';
+            totaldigitado := 0;
+            novototaldigitado := 0;
+            antigototaldigitado := 0;
+
+            if (notaRetornar <> '') and (DBGrid2.DataSource.DataSet.FieldByName('numeronota').AsString <> notaRetornar) then
+               continue;
+
+            planJbm.empresaLigada := DBGrid2.DataSource.DataSet.FieldByName('empresa_ligada_agrupar').AsInteger;
+            planJbm.numerodanota :=  DBGrid2.DataSource.DataSet.FieldByName('numeronota').AsInteger;
+
+            ret := IsFileLocked(planJbm.ObtemDirLck + '\' + IntToStr(planJbm.numerodanota) + '.lck', fhandle);
+
+            if ret <= 0 then
+               continue;
+
+            try
+               ret := planJbm.ObtemProcessosDigitar(DBGrid2.DataSource.DataSet.FieldByName('numeronota').AsString);
+
+               if ret = -1 then
+                  exit;
+
+               if FormatDateTime('hh:nn', Now) > '22:00' then
+                  exit;
+
+               wb.Navigate('http://www4.net.bradesco.com.br/gcpj/servlet/finHonorariosNovoAction?metodo=carregarHonorariosEmCadastramento');
+
+               busy := wb.Busy;
+               while busy = true do
+               begin
+                  Sleep(200);
+                  Application.ProcessMessages;
+                  busy := wb.Busy;
+               end;
+
+                  case ret of
+                     0 : //frmGcpj.statusNota := 9; //finalizar
+                  else
+                     if planJbm.SomaTotalDigitadoDaNota > 0 then
+//                        frmGcpj.statusNota := 1 //já digitando
+                     else
+                        ret := DigitaNotaNova(wintask);
+                  end;
+
+                  exit;
+            finally
+               ReleaseFile(planJbm.ObtemDirLck + '\' +IntToStr(planJbm.numerodanota) + '.lck', fhandle);
+            end;
+         finally
+            wintask.Free;
+         end;
+      end;
+   finally
+      dbGrid2.DataSource.DataSet.EnableControls;
+   end;
+end;
+
+function TfrmDigitaPlan.DigitaNotaNova(winTask: TWintask) : integer;
+
+var
+   doc : IHTMLDocument2;
+   theForm : IHTMLFormElement;
+   inputElement : HTMLInputElement;
+   found : boolean;
+   index : integer;
+begin
+   result := PosicionaNotaNova(wintask);
+   if result < 0 then
+      exit;
+end;
+
+
+procedure TfrmDigitaPlan.SelecionaTodaLista;
+begin
+   DBGrid2.DataSource.DataSet.DisableControls;
+   try
+      DBGrid2.DataSource.DataSet.first;
+      while not DBGrid2.DataSource.DataSet.eof do
+      begin
+         dbGrid2.SelectedRows.CurrentRowSelected := true;
+         DBGrid2.DataSource.DataSet.next;
+      end;
+   finally
+      DBGrid2.DataSource.DataSet.EnableControls;
+   end;
+end;
+
+procedure TfrmDigitaPlan.wbDocumentComplete(Sender: TObject;
+  const pDisp: IDispatch; var URL: OleVariant);
+begin
+   segue := true;
+end;
+
+procedure TfrmDigitaPlan.EsperaPaginaProcessar;
+begin
+   while Not segue do
+   begin
+      Sleep(500);
+      Application.ProcessMessages;
+   end;
+end;
+
+function TfrmDigitaPlan.GetFormByName(const documento: IHTMLDocument2;
+  nomeForm: string): IHTMLFormElement;
+var
+   forms : IHTMLElementCollection;
+   form : IHTMLFormElement;
+   idx : integer;
+begin
+   forms := documento.forms as  IHTMLElementCollection;
+   result := Nil;
+   for idx := 0 to forms.length - 1 do
+   begin
+      form := forms.item(idx, 0) as IHTMLFormElement;
+      if UpperCase(form.name) = UpperCase(nomeForm) then
+         result := form;
+   end;
+end;
+
+function TfrmDigitaPlan.GetInputField(fromForm: IHTMLFormElement;
+  const inputName: string; const instance: integer): HTMLInputElement;
+var
+  field: IHTMLElement;
+begin
+  field := fromForm.Item(inputName,instance) as IHTMLElement;
+  if Assigned(field) then
+  begin
+    if UpperCase(field.tagName) = 'INPUT' then
+    begin
+      result := field as HTMLInputElement;
+      exit;
+    end;
+  end;
+  result := nil;
+end;
+
+function TfrmDigitaPlan.GetSelectField(fromForm: IHTMLFormElement;
+  const selectName: string; const instance: integer): HTMLSelectElement;
+var
+  field: IHTMLElement;
+begin
+  field := fromForm.Item(selectName,instance) as IHTMLElement;
+  if Assigned(field) then
+  begin
+    if field.tagName = 'SELECT' then
+    begin
+      result := field as HTMLSelectElement;
+      exit;
+    end;
+  end;
+  result := nil;
+end;
+
+function TfrmDigitaPlan.PosicionaNotaNova(wintask: TWintask): integer;
+var
+   found : boolean;
+   index : integer;
+   inputElement : HTMLInputElement;
+   newForm : IHTMLFormElement;
+   doc : IHTMLDocument2;
+   valor : string;
+   selectElement : HTMLSelectElement;
+   HTMLWindow : IHTMLWindow2;
+   popup : string;
+   newDoc : IHTMLDocument2;
+   wbScript : HTMLScriptElement;
+   ppForm : IHTMLFormElement;
+begin
+   result := -1;
+
+   doc := wb.document as IHTMLDocument2;
+   newForm := GetFormByName(doc, 'financeiroHonorariosForm');
+
+   found := false;
+   index := 0;
+   while not found do
+   begin
+      inputElement := GetInputField(newForm, 'btoIncluir', index);
+      if Not Assigned(inputElement) then
+         break;
+
+      segue := false;
+      inputElement.click;
+      EsperaPaginaProcessar;
+      break;
+   end;
+
+   //digita os dados do CNPJ
+   doc := wb.document as IHTMLDocument2;
+   newForm := GetFormByName(doc, 'financeiroHonorariosForm');
+   if not Assigned(newForm) then
+   begin
+      ShowMessage('Não está na página correta');
+      exit;
+   end;
+
+      //preenche o formulario
+   selectElement := GetSelectField(newform, 'cdTipoDocumentoPessoa', 0);
+   if Not Assigned(selectElement) then
+   begin
+      ShowMessage('Não está no formulário correto');
+      exit;
+   end;
+
+   segue := false;
+
+   selectElement.selectedIndex := 1;
+
+   HTMLWindow := (wb.document as IHTMLDocument2).parentWindow;
+   HTMLWindow.execScript('rotearTipoDocumento()', '');
+
+   Sleep(2000);
+
+   //preenche o CNPJ
+   inputElement := GetInputField(newform, 'despesaHonorariosProcessoVO.pessoaExternaBradescoVO.cdCnpjPessoaExterna', 0);
+   while Not Assigned(inputElement) do
+   begin
+      newform := GetFormByName(wb.Document as IHTMLDocument2, 'financeiroHonorariosForm');
+      if not Assigned(newform) then
+      begin
+         ShowMessage('Não está na página correta');
+         exit;
+      end;
+      Sleep(1000);
+      Application.ProcessMessages;
+      inputElement := GetInputField(newform, 'despesaHonorariosProcessoVO.pessoaExternaBradescoVO.cdCnpjPessoaExterna', 0);
+   end;
+
+   inputElement.value := Copy(planJbm.cnpjEscritorio, 1, 8);
+   inputElement := GetInputField(newform, 'despesaHonorariosProcessoVO.pessoaExternaBradescoVO.cdFilialCnpjPessoaExterna', 0);
+   if Not Assigned(inputElement) then
+   begin
+      ShowMessage('Não está no formulário correto');
+      exit;
+   end;
+
+   inputElement.value := Copy(planJbm.cnpjEscritorio, 9, 4);
+   inputElement := GetInputField(newform, 'despesaHonorariosProcessoVO.pessoaExternaBradescoVO.cdControleCnpjPessoaExterna', 0);
+   if Not Assigned(inputElement) then
+   begin
+      ShowMessage('Não está no formulário correto');
+      exit;
+   end;
+
+   inputElement.value := Copy(planJbm.cnpjEscritorio, 13, 2);
+   Sleep(500);
+
+   inputElement := GetInputField(Newform, 'btoLupa', 0);
+   while Not Assigned(inputElement) do
+   begin
+      newform := GetFormByName(wb.Document as IHTMLDocument2, 'financeiroHonorariosForm');
+      if not Assigned(newform) then
+      begin
+         ShowMessage('Não está na página correta');
+         exit;
+      end;
+      Sleep(3000);
+      Application.ProcessMessages;
+      inputElement := GetInputField(newform, 'btoLupa', 0);
+   end;
+
+   segue := false;
+   inputElement.click;
+   Sleep(2000);
+
+   if Assigned(wbPopUp) then
+   begin
+      Application.ProcessMessages;
+      while Not wbpopUp.wbCompleted do
+      begin
+         Sleep(1000);
+         Application.ProcessMessages;
+      end;
+
+      ppForm := GetFormByName(wbPopUp.wb as IHTMLDocument2, 'frmPopup');
+      wbScript := GetScriptField(ppForm, '', 0);
+      wbScript.click;
+      wbScript.blur;
+      Sleep(2000);
+   end;
+
+
+   selectElement := GetSelectField(newform, 'despesaHonorariosProcessoVO.tipoDocumentoHonorarioVO.cdTipoDocumentoHonorarios', 0);
+   if Not Assigned(selectElement) then
+   begin
+      ShowMessage('Não está no formulário correto');
+      exit;
+   end;
+
+   segue := false;
+
+   selectElement.selectedIndex := 6;
+   selectElement.blur;
+
+   //   HTMLWindow := (wb.document as IHTMLDocument2).parentWindow;
+//   HTMLWindow.execScript('validaTipoDocumento()', '');
+
+   Sleep(2000);
+
+
+
+   (**      wintask.SelectHTMLItem(pageGcpj, 'SELECT[NAME= ''despesaHonorariosPro'']', 'NOTA FISCAL');
+      Sleep(TIME_SLEEP_ZERO);
+
+      wintask.Click_Mouse(mainPage, 552,217);
+      Sleep(TIME_SLEEP_ZERO);
+
+      valor := planJbm.dtsAtos.FieldByName('numeronota').AsString;
+      valDigitar := '';
+      while Length(valor) > 0 do
+      begin
+         valDigitar := valDigitar + '<Num ' + Copy(valor, 1, 1) + '>';
+         valor := Copy(valor, 2, length(valor));
+      end;
+      wintask.SendKey(mainPage,valDigitar);
+      Sleep(TIME_SLEEP_ZERO);
+
+      wintask.SendKey(mainPage,'<Tab>A<Tab>');
+      Sleep(TIME_SLEEP_ZERO);
+
+      valor := FormatDateTime('ddmmyyyy', date);
+      valDigitar := '';
+      while Length(valor) > 0 do
+      begin
+         valDigitar := valDigitar + '<Num ' + Copy(valor, 1, 1) + '>';
+         valor := Copy(valor, 2, length(valor));
+      end;
+      wintask.SendKey(mainPage,valDigitar);
+      Sleep(TIME_SLEEP_ZERO);
+
+      wintask.Click_Mouse(mainPage,546,241);
+//      wintask.Click_Mouse(mainPage,589,338);
+      Sleep(TIME_SLEEP_ZERO);
+
+      valor := RemoveNaoNumericos(FormatFloat('0.00', planJbm.valorTotalNota));
+      valDigitar := '';
+      while Length(valor) > 0 do
+      begin
+         valDigitar := valDigitar + '<Num ' + Copy(valor, 1, 1) + '>';
+         valor := Copy(valor, 2, length(valor));
+      end;
+
+      wintask.SendKey(mainPage,valDigitar);
+      Sleep(TIME_SLEEP_ZERO);
+
+      wintask.WriteHTML(pageGcpj, 'INPUT TEXT[NAME= ''despesaHonorariosProcessoVO.empresaBradescoVO.c'']', '237');
+      Sleep(TIME_SLEEP_ZERO);
+
+      if planJbm.dtsAtos.FieldByName('empresaligadaagrupar').AsInteger <> 237 then
+         wintask.WriteHTML(pageGcpj, 'INPUT TEXT[NAME= ''despesaHonorariosProcessoVO.dependenciaBradesco'']', planJbm.dtsAtos.FieldByName('empresaligadaagrupar').AsString);
+      Sleep(TIME_SLEEP_ZERO);
+      result := 1;
+   *)
+   result := 1;
+end;
+
+procedure TfrmDigitaPlan.wbNewWindow2(Sender: TObject;
+  var ppDisp: IDispatch; var Cancel: WordBool);
+begin
+   if Assigned(wbpopup) then
+   begin
+      wbPopup.Close;
+      FreeAndNil(wbPopup);
+   end;
+
+   wbpopUp := TfrmGcpj.Create(Nil);
+   if planJbm.nomedigitar = '' then
+      wbpopUp.nomeDigitar := copy(planJbm.nomeescritorio, 1, 20)
+   else
+      wbpopUp.nomeDigitar := planJbm.nomedigitar;
+   wbpopUp.Caption := Self.Caption + ' (popup)';
+   wbpopUp.wbCompleted := false;
+   wbpopUp.Show;
+   ppDisp := wbPopup.wb.Application;
+end;
+
+function TfrmDigitaPlan.GetScriptField(fromForm: IHTMLFormElement;
+  const selectName: string; const instance: integer): HTMLScriptElement;
+var
+  field: IHTMLElement;
+begin
+  field := fromForm.Item(selectName,instance) as IHTMLElement;
+  if Assigned(field) then
+  begin
+    if field.tagName = 'SCRIPT' then
+    begin
+      result := field as HTMLScriptElement;
+      exit;
+    end;
+  end;
+  result := nil;
+end;
+
+end.

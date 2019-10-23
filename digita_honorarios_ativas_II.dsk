@@ -1,0 +1,519 @@
+[Closed Files]
+File_0=SourceModule,'C:\projeto\sisba32b\Presenta.pas',0,1,443,18,460,0,0
+File_1=SourceModule,'C:\projeto\utils\bradesco - honorarios\digitador\V5.0\datamodulegcpj_base_iii.pas',0,1,277,1,100,0,0
+File_2=SourceModule,'C:\projeto\utils\bradesco - honorarios\digitador\V5.0\datamodulegcpj_base_iv.pas',0,1,114,80,117,0,0
+
+[Modules]
+Module0=C:\projeto\utils\bradesco - honorarios\digitador\V5.0\fvalidaplan.pas
+Module1=C:\projeto\utils\bradesco - honorarios\digitador\V5.0\datamodulegcpj_base_V.pas
+Module2=C:\projeto\utils\bradesco - honorarios\digitador\V5.0\frelatorios.pas
+Module3=C:\projeto\utils\bradesco - honorarios\digitador\V5.0\fEnviaGcpj.pas
+Module4=C:\projeto\utils\bradesco - honorarios\digitador\V5.0\MAIN.PAS
+Module5=C:\projeto\utils\bradesco - honorarios\digitador\V5.0\datamodule_honorarios.pas
+Module6=C:\projeto\utils\bradesco - honorarios\digitador\V5.0\datamodulegcpj_compartilhado.pas
+Module7=C:\projeto\utils\bradesco - honorarios\digitador\V5.0\uPlanJBM.pas
+Module8=C:\Program Files (x86)\XLSSuit5\d6\SrcXLS\XLSSheetData5.pas
+Module9=C:\projeto\utils\bradesco - honorarios\digitador\V5.0\fimportaplan.pas
+Module10=C:\projeto\utils\bradesco - honorarios\digitador\V5.0\fdigitaplan.pas
+Count=11
+EditWindowCount=1
+
+[C:\projeto\utils\bradesco - honorarios\digitador\V5.0\fvalidaplan.pas]
+ModuleType=SourceModule
+FormState=0
+FormOnTop=0
+
+[C:\projeto\utils\bradesco - honorarios\digitador\V5.0\datamodulegcpj_base_V.pas]
+ModuleType=SourceModule
+FormState=0
+FormOnTop=0
+
+[C:\projeto\utils\bradesco - honorarios\digitador\V5.0\frelatorios.pas]
+ModuleType=SourceModule
+FormState=0
+FormOnTop=0
+
+[C:\projeto\utils\bradesco - honorarios\digitador\V5.0\fEnviaGcpj.pas]
+ModuleType=SourceModule
+FormState=0
+FormOnTop=0
+
+[C:\projeto\utils\bradesco - honorarios\digitador\V5.0\MAIN.PAS]
+ModuleType=SourceModule
+FormState=0
+FormOnTop=0
+
+[C:\projeto\utils\bradesco - honorarios\digitador\V5.0\datamodule_honorarios.pas]
+ModuleType=SourceModule
+FormState=0
+FormOnTop=0
+
+[C:\projeto\utils\bradesco - honorarios\digitador\V5.0\datamodulegcpj_compartilhado.pas]
+ModuleType=SourceModule
+FormState=0
+FormOnTop=0
+
+[C:\projeto\utils\bradesco - honorarios\digitador\V5.0\uPlanJBM.pas]
+ModuleType=SourceModule
+FormState=0
+FormOnTop=0
+
+[C:\Program Files (x86)\XLSSuit5\d6\SrcXLS\XLSSheetData5.pas]
+ModuleType=SourceModule
+FormState=0
+FormOnTop=0
+
+[C:\projeto\utils\bradesco - honorarios\digitador\V5.0\fimportaplan.pas]
+ModuleType=SourceModule
+FormState=0
+FormOnTop=0
+
+[C:\projeto\utils\bradesco - honorarios\digitador\V5.0\fdigitaplan.pas]
+ModuleType=SourceModule
+FormState=0
+FormOnTop=0
+
+[C:\Program Files (x86)\Borland\Delphi6\Projects\ProjectGroup1.bpg]
+FormState=0
+FormOnTop=0
+
+[C:\projeto\utils\bradesco - honorarios\digitador\V5.0\digita_honorarios_ativas_II.dpr]
+FormState=0
+FormOnTop=0
+
+[EditWindow0]
+ViewCount=11
+CurrentView=1
+View0=0
+View1=1
+View2=2
+View3=3
+View4=4
+View5=5
+View6=6
+View7=7
+View8=8
+View9=9
+View10=10
+CodeExplorer=CodeExplorer@EditWindow0
+MessageView=MessageView@EditWindow0
+Create=1
+Visible=1
+State=2
+Left=2
+Top=138
+Width=1598
+Height=564
+MaxLeft=-8
+MaxTop=106
+MaxWidth=1616
+MaxHeight=762
+ClientWidth=1600
+ClientHeight=724
+LeftPanelSize=140
+LeftPanelClients=CodeExplorer@EditWindow0
+LeftPanelData=000004000000000000000000000000000000000000000000000100000000000000000C000000436F64654578706C6F726572FFFFFFFF
+RightPanelSize=0
+BottomPanelSize=0
+BottomPanelClients=MessageView@EditWindow0
+BottomPanelData=00000400010000000B0000004D657373616765566965774006000000000000027F0000000000000001000000000000000000000000010000000040060000000000000100000000400600000000000001000000004006000000000000FFFFFFFF
+
+[View0]
+Module=C:\projeto\utils\bradesco - honorarios\digitador\V5.0\fdigitaplan.pas
+CursorX=1
+CursorY=1
+TopLine=1
+LeftCol=1
+
+[View1]
+Module=C:\projeto\utils\bradesco - honorarios\digitador\V5.0\fvalidaplan.pas
+CursorX=98
+CursorY=1833
+TopLine=1826
+LeftCol=1
+
+[View2]
+Module=C:\projeto\utils\bradesco - honorarios\digitador\V5.0\fimportaplan.pas
+CursorX=66
+CursorY=278
+TopLine=263
+LeftCol=1
+
+[View3]
+Module=C:\Program Files (x86)\XLSSuit5\d6\SrcXLS\XLSSheetData5.pas
+CursorX=80
+CursorY=2299
+TopLine=2288
+LeftCol=1
+
+[View4]
+Module=C:\projeto\utils\bradesco - honorarios\digitador\V5.0\uPlanJBM.pas
+CursorX=61
+CursorY=1137
+TopLine=1120
+LeftCol=1
+
+[View5]
+Module=C:\projeto\utils\bradesco - honorarios\digitador\V5.0\datamodulegcpj_compartilhado.pas
+CursorX=1
+CursorY=122
+TopLine=104
+LeftCol=1
+
+[View6]
+Module=C:\projeto\utils\bradesco - honorarios\digitador\V5.0\datamodule_honorarios.pas
+CursorX=123
+CursorY=257
+TopLine=238
+LeftCol=1
+
+[View7]
+Module=C:\projeto\utils\bradesco - honorarios\digitador\V5.0\MAIN.PAS
+CursorX=1
+CursorY=150
+TopLine=139
+LeftCol=1
+
+[View8]
+Module=C:\projeto\utils\bradesco - honorarios\digitador\V5.0\fEnviaGcpj.pas
+CursorX=33
+CursorY=115
+TopLine=112
+LeftCol=1
+
+[View9]
+Module=C:\projeto\utils\bradesco - honorarios\digitador\V5.0\frelatorios.pas
+CursorX=36
+CursorY=290
+TopLine=266
+LeftCol=1
+
+[View10]
+Module=C:\projeto\utils\bradesco - honorarios\digitador\V5.0\datamodulegcpj_base_V.pas
+CursorX=63
+CursorY=347
+TopLine=344
+LeftCol=1
+
+[Watches]
+Count=0
+
+[Breakpoints]
+Count=16
+Breakpoint0='C:\projeto\utils\bradesco - honorarios\digitador\V5.0\fEnviaGcpj.pas',334,'',0,1,'',1,0,0,'',1,'','',''
+Breakpoint1='C:\projeto\utils\bradesco - honorarios\digitador\V5.0\fEnviaGcpj.pas',346,'',0,1,'',1,0,0,'',1,'','',''
+Breakpoint2='C:\projeto\utils\bradesco - honorarios\digitador\V5.0\fdigitaplan.pas',3360,'',0,1,'',1,0,0,'',1,'','',''
+Breakpoint3='C:\projeto\utils\bradesco - honorarios\digitador\V5.0\fvalidaplan.pas',1405,'',0,1,'',1,0,0,'',1,'','',''
+Breakpoint4='C:\projeto\utils\bradesco - honorarios\digitador\V5.0\fvalidaplan.pas',2471,'',0,1,'',1,0,0,'',1,'','',''
+Breakpoint5='C:\projeto\utils\bradesco - honorarios\digitador\V5.0\fimportaplan.pas',310,'',0,1,'',1,0,0,'',1,'','',''
+Breakpoint6='C:\projeto\utils\bradesco - honorarios\digitador\V5.0\fimportaplan.pas',318,'',0,1,'',1,0,0,'',1,'','',''
+Breakpoint7='C:\projeto\utils\bradesco - honorarios\digitador\V5.0\fimportaplan.pas',327,'',0,1,'',1,0,0,'',1,'','',''
+Breakpoint8='C:\projeto\utils\bradesco - honorarios\digitador\V5.0\fimportaplan.pas',242,'',0,1,'',1,0,0,'',1,'','',''
+Breakpoint9='C:\projeto\utils\bradesco - honorarios\digitador\V5.0\fvalidaplan.pas',1662,'',0,1,'',1,0,0,'',1,'','',''
+Breakpoint10='C:\projeto\utils\bradesco - honorarios\digitador\V5.0\fvalidaplan.pas',1769,'',0,1,'',1,0,0,'',1,'','',''
+Breakpoint11='C:\projeto\utils\bradesco - honorarios\digitador\V5.0\fvalidaplan.pas',905,'',0,1,'',1,0,0,'',1,'','',''
+Breakpoint12='C:\projeto\utils\bradesco - honorarios\digitador\V5.0\fvalidaplan.pas',752,'',0,1,'',1,0,0,'',1,'','',''
+Breakpoint13='C:\projeto\utils\bradesco - honorarios\digitador\V5.0\fvalidaplan.pas',544,'',0,1,'',1,0,0,'',1,'','',''
+Breakpoint14='C:\projeto\utils\bradesco - honorarios\digitador\V5.0\fvalidaplan.pas',2371,'',0,1,'',1,0,0,'',1,'','',''
+Breakpoint15='C:\projeto\utils\bradesco - honorarios\digitador\V5.0\fvalidaplan.pas',458,'',0,1,'',1,0,0,'',1,'','',''
+
+[AddressBreakpoints]
+Count=0
+
+[Main Window]
+Create=1
+Visible=1
+State=2
+Left=0
+Top=0
+Width=1600
+Height=122
+MaxLeft=-1
+MaxTop=-1
+MaxWidth=1616
+MaxHeight=122
+ClientWidth=1600
+ClientHeight=84
+
+[ProjectManager]
+Create=1
+Visible=0
+State=0
+Left=369
+Top=372
+Width=446
+Height=313
+MaxLeft=-1
+MaxTop=-1
+ClientWidth=430
+ClientHeight=279
+TBDockHeight=313
+LRDockWidth=446
+Dockable=1
+
+[Components]
+Create=1
+Visible=0
+State=0
+Left=308
+Top=167
+Width=183
+Height=266
+MaxLeft=-1
+MaxTop=-1
+ClientWidth=167
+ClientHeight=232
+
+[CPUWindow]
+Create=1
+Visible=0
+State=0
+Left=116
+Top=99
+Width=533
+Height=353
+MaxLeft=-1
+MaxTop=-1
+ClientWidth=517
+ClientHeight=315
+DumpPane=79
+DisassemblyPane=187
+RegisterPane=231
+FlagPane=64
+
+[AlignmentPalette]
+Create=1
+Visible=0
+State=0
+Left=200
+Top=124
+Width=156
+Height=84
+MaxLeft=-1
+MaxTop=-1
+ClientWidth=150
+ClientHeight=60
+
+[PropertyInspector]
+Create=1
+Visible=1
+State=0
+Left=925
+Top=357
+Width=348
+Height=359
+MaxLeft=-1
+MaxTop=-1
+ClientWidth=332
+ClientHeight=325
+TBDockHeight=359
+LRDockWidth=190
+Dockable=1
+SplitPos=118
+ArrangeBy=Name
+SelectedItem=
+ExpandedItems=Options,Title
+HiddenCategories=
+
+[WatchWindow]
+Create=1
+Visible=0
+State=0
+Left=0
+Top=672
+Width=1600
+Height=188
+MaxLeft=-1
+MaxTop=-1
+ClientWidth=1584
+ClientHeight=154
+TBDockHeight=154
+LRDockWidth=421
+Dockable=1
+
+[BreakpointWindow]
+Create=1
+Visible=1
+State=0
+Left=0
+Top=666
+Width=1596
+Height=199
+MaxLeft=-1
+MaxTop=-1
+ClientWidth=1580
+ClientHeight=165
+TBDockHeight=197
+LRDockWidth=737
+Dockable=1
+Column0Width=100
+Column1Width=60
+Column2Width=240
+Column3Width=40
+Column4Width=75
+Column5Width=75
+
+[CallStackWindow]
+Create=1
+Visible=0
+State=0
+Left=253
+Top=219
+Width=294
+Height=161
+MaxLeft=-1
+MaxTop=-1
+ClientWidth=278
+ClientHeight=127
+TBDockHeight=161
+LRDockWidth=294
+Dockable=1
+
+[ThreadStatusWindow]
+Create=1
+Visible=0
+State=0
+Left=488
+Top=524
+Width=624
+Height=597
+MaxLeft=-1
+MaxTop=-1
+ClientWidth=608
+ClientHeight=563
+TBDockHeight=597
+LRDockWidth=624
+Dockable=1
+Column0Width=145
+Column1Width=100
+Column2Width=115
+Column3Width=250
+
+[ModuleWindow]
+Create=1
+Visible=0
+State=0
+Left=295
+Top=293
+Width=638
+Height=355
+MaxLeft=-1
+MaxTop=-1
+ClientWidth=622
+ClientHeight=321
+TBDockHeight=355
+LRDockWidth=638
+Dockable=1
+Column0Width=192
+Column1Width=154
+Column2Width=238
+EntryPointPane=346
+CompUnitPane=160
+
+[ObjectTree]
+Create=1
+Visible=0
+State=0
+Left=0
+Top=105
+Width=190
+Height=240
+MaxLeft=-1
+MaxTop=-1
+ClientWidth=174
+ClientHeight=206
+TBDockHeight=240
+LRDockWidth=190
+Dockable=1
+
+[DebugLogView]
+Create=1
+Visible=0
+State=0
+Left=491
+Top=379
+Width=417
+Height=291
+MaxLeft=-1
+MaxTop=-1
+ClientWidth=401
+ClientHeight=257
+TBDockHeight=291
+LRDockWidth=417
+Dockable=1
+
+[LocalVarsWindow]
+Create=1
+Visible=0
+State=0
+Left=273
+Top=197
+Width=421
+Height=191
+MaxLeft=-1
+MaxTop=-1
+ClientWidth=405
+ClientHeight=157
+TBDockHeight=191
+LRDockWidth=421
+Dockable=1
+
+[ToDo List]
+Create=1
+Visible=0
+State=0
+Left=165
+Top=175
+Width=467
+Height=250
+MaxLeft=-1
+MaxTop=-1
+ClientWidth=451
+ClientHeight=216
+TBDockHeight=250
+LRDockWidth=467
+Dockable=1
+Column0Width=200
+Column1Width=30
+Column2Width=100
+Column3Width=70
+Column4Width=70
+SortOrder=4
+ShowHints=1
+ShowChecked=1
+
+[CodeExplorer@EditWindow0]
+Create=1
+Visible=1
+State=0
+Left=0
+Top=12
+Width=140
+Height=712
+MaxLeft=-1
+MaxTop=-1
+ClientWidth=140
+ClientHeight=712
+TBDockHeight=305
+LRDockWidth=140
+Dockable=1
+
+[MessageView@EditWindow0]
+Create=1
+Visible=0
+State=0
+Left=12
+Top=0
+Width=1588
+Height=127
+MaxLeft=-1
+MaxTop=-1
+ClientWidth=1588
+ClientHeight=127
+TBDockHeight=127
+LRDockWidth=443
+Dockable=1
+
+[DockHosts]
+DockHostCount=0
+
